@@ -1,0 +1,9 @@
+{
+  "name": "Post Radar - India Post Field Marketing",
+  "short_name": "Post Radar",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#B91C1C",
+  "theme_color": "#B91C1C"
+}
