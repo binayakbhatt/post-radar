@@ -1,47 +1,54 @@
-const DIGIPIN_GRID = [
-  ['F', 'C', '9', '8'],
-  ['J', '3', '2', '7'],
-  ['K', '4', '5', '6'],
-  ['L', 'M', 'P', 'T']
-];
-export function generateDigipin(lat, lng) {
-  let minLat = 2.5, maxLat = 38.5, minLng = 63.5, maxLng = 99.5;
-  if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) return 'OUT-OF-INDIA';
-  let code = '';
-  for (let level = 1; level <= 10; level++) {
-    const latStep = (maxLat - minLat) / 4, lngStep = (maxLng - minLng) / 4;
-    let row = Math.min(3, Math.max(0, Math.floor((lat - minLat) / latStep)));
-    let col = Math.min(3, Math.max(0, Math.floor((lng - minLng) / lngStep)));
-    code += DIGIPIN_GRID[3 - row][col];
-    minLat += row * latStep; maxLat = minLat + latStep;
-    minLng += col * lngStep; maxLng = minLng + lngStep;
-  }
-  return code.slice(0, 3) + '-' + code.slice(3, 6) + '-' + code.slice(6, 10);
-}
+/**
+ * Calculate distance in meters between two lat/lng points using Haversine formula.
+ * @param {number} lat1 - Latitude 1
+ * @param {number} lng1 - Longitude 1
+ * @param {number} lat2 - Latitude 2
+ * @param {number} lng2 - Longitude 2
+ * @returns {number} Distance in meters
+ */
 export function calculateHaversineMeters(lat1, lng1, lat2, lng2) {
-  const R = 6371000, toRad = (d) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+  const R = 6371000;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
 }
-export function getBoundingBox(lat, lng, radiusMeters = 1000) {
-  const latDelta = radiusMeters / 111320;
-  const lngDelta = radiusMeters / (111320 * Math.cos((lat * Math.PI) / 180));
-  return { minLat: lat - latDelta, maxLat: lat + latDelta, minLng: lng - lngDelta, maxLng: lng + lngDelta };
+
+/**
+ * Calculate 8-point compass direction from point A to point B.
+ * @param {number} lat1 
+ * @param {number} lng1 
+ * @param {number} lat2 
+ * @param {number} lng2 
+ * @returns {string} Compass direction sector (N, NE, E, SE, S, SW, W, NW)
+ */
+export function getCompassDirection(lat1, lng1, lat2, lng2) {
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const toDeg = (rad) => (rad * 180) / Math.PI;
+
+  const dLng = toRad(lng2 - lng1);
+  const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+  const x =
+    Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+
+  let brng = toDeg(Math.atan2(y, x));
+  brng = (brng + 360) % 360;
+
+  const sectors = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N'];
+  return sectors[Math.round(brng / 45)];
 }
-export function encodeGeohash(lat, lng, precision = 7) {
-  const BASE32 = '0123456789bcdefghjkmnpqrstuvwxyz';
-  let idx = 0, bit = 0, evenBit = true, geohash = '', latMin = -90, latMax = 90, lngMin = -180, lngMax = 180;
-  while (geohash.length < precision) {
-    if (evenBit) {
-      const mid = (lngMin + lngMax) / 2;
-      if (lng >= mid) { idx = idx * 2 + 1; lngMin = mid; } else { idx *= 2; lngMax = mid; }
-    } else {
-      const mid = (latMin + latMax) / 2;
-      if (lat >= mid) { idx = idx * 2 + 1; latMin = mid; } else { idx *= 2; latMax = mid; }
-    }
-    evenBit = !evenBit;
-    if (++bit === 5) { geohash += BASE32.charAt(idx); bit = 0; idx = 0; }
-  }
-  return geohash;
+
+/**
+ * Format distance and direction string.
+ */
+export function formatDistanceAndDirection(lat1, lng1, lat2, lng2) {
+  const meters = calculateHaversineMeters(lat1, lng1, lat2, lng2);
+  const dir = getCompassDirection(lat1, lng1, lat2, lng2);
+  const distStr = meters < 1000 ? `${meters}m` : `${(meters / 1000).toFixed(1)}km`;
+  return `${distStr} (${dir})`;
 }
