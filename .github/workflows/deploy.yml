@@ -3,7 +3,7 @@ name: Deploy Post Radar PWA to GitHub Pages
 
 on:
   push:
-    branches: ['main']
+    branches: ['master']
   workflow_dispatch:
 
 # Grant GITHUB_TOKEN permissions to deploy to GitHub Pages
