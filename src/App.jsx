@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceAndDirection } from './shared/geo.js';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+// Clean the base URL to prevent trailing slash double-slashes (e.g. //api)
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 const API_URL = API_BASE;
+
 
 export default function App() {
   const queryClient = useQueryClient();
