@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceAndDirection } from './shared/geo.js';
-
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 export default function App() {
   const queryClient = useQueryClient();
   const [user, setUser] = useState(null);
@@ -26,7 +26,7 @@ export default function App() {
   const [newPin, setNewPin] = useState('787057');
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch(`${API_URL}/api/auth/me`)
       .then((res) => res.json())
       .then((data) => {
         if (data.user) setUser(data.user);
