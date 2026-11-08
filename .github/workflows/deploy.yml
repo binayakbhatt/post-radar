@@ -3,16 +3,14 @@ name: Deploy Post Radar PWA to GitHub Pages
 
 on:
   push:
-    branches: ['master']
+    branches: ['master', 'main']
   workflow_dispatch:
 
-# Grant GITHUB_TOKEN permissions to deploy to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow one concurrent deployment
 concurrency:
   group: 'pages'
   cancel-in-progress: true
@@ -20,6 +18,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Binding environment here allows access to both Repository Secrets AND github-pages Environment Secrets
+    environment: github-pages
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,15 +34,15 @@ jobs:
 
       - name: Build Vite PWA for GitHub Pages
         env:
-          # Automatically configures Vite base path to /<repo-name>/
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          # Pulls the Cloudflare Worker URL securely from GitHub Repository Secrets
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
         run: |
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "ERROR: VITE_API_BASE_URL secret is empty! Check Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
           npm run build
-          # Copy index.html to 404.html so client-side SPA routing works on hard refresh
           cp dist/index.html dist/404.html
-          # Prevent Jekyll processing on GitHub Pages
           touch dist/.nojekyll
 
       - name: Configure GitHub Pages
