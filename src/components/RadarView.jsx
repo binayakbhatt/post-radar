@@ -19,7 +19,9 @@ export default function RadarView({ coords, syncFlag, onOpenAddModal, user }) {
     queryKey: ['configs'],
     queryFn: () => apiFetch('/api/admin/configs'),
   });
+
   const businessesList = data?.businesses || [];
+
   // Dynamically include all categories present in nearby leads + core categories
   const categories = React.useMemo(() => {
     const core = ['ALL', 'School', 'Hospital', 'Bank', 'Police Station', 'Retail', 'Factory'];
@@ -29,7 +31,7 @@ export default function RadarView({ coords, syncFlag, onOpenAddModal, user }) {
     });
     return Array.from(dynamicSet);
   }, [businessesList]);
- 
+
   const filtered =
     selectedTypeFilter === 'ALL'
       ? businessesList
@@ -50,7 +52,7 @@ export default function RadarView({ coords, syncFlag, onOpenAddModal, user }) {
         </div>
         <button
           onClick={onOpenAddModal}
-          className="min-h-[38px] px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm"
+          className="min-h-[38px] px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm cursor-pointer"
         >
           ＋ Add Location
         </button>
@@ -61,7 +63,7 @@ export default function RadarView({ coords, syncFlag, onOpenAddModal, user }) {
           <button
             key={cat}
             onClick={() => setSelectedTypeFilter(cat)}
-            className={`min-h-[38px] px-3 rounded-xl text-xs font-bold shrink-0 transition-all ${
+            className={`min-h-[38px] px-3 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
               selectedTypeFilter === cat
                 ? 'bg-[#B91C1C] text-white shadow-xs'
                 : 'bg-white border text-slate-700 hover:bg-slate-50'
