@@ -6,6 +6,8 @@ import InlineLeafletMap from './components/InlineLeafletMap.jsx';
 import RadarView from './components/RadarView.jsx';
 import DiaryView from './components/DiaryView.jsx';
 import AdminView from './components/AdminView.jsx';
+import { EXHAUSTIVE_CATEGORIES } from './lib/categories.js';
+const [customNewType, setCustomNewType] = useState('');
 
 export default function App() {
   const queryClient = useQueryClient();
@@ -315,17 +317,24 @@ export default function App() {
       </main>
 
       {/* Centered Modal on Desktop, Bottom Sheet on Mobile */}
+      {/* Centered Modal on Desktop, Bottom Sheet on Mobile */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              const finalCategory =
+                newType === '__OTHER__' ? customNewType.trim() : newType.trim();
+              if (!finalCategory) {
+                alert('Please specify the custom institution/business category.');
+                return;
+              }
               try {
                 await apiFetch('/api/businesses', {
                   method: 'POST',
                   body: JSON.stringify({
                     name: newName,
-                    business_type: newType,
+                    business_type: finalCategory,
                     phone: newPhone,
                     address: newAddress,
                     lat: coords?.lat || 27.47528,
@@ -334,6 +343,7 @@ export default function App() {
                 });
                 setShowAddModal(false);
                 setNewName('');
+                setCustomNewType('');
                 setNewPhone('');
                 setNewAddress('');
                 queryClient.invalidateQueries({ queryKey: ['businesses'] });
@@ -367,14 +377,26 @@ export default function App() {
               onChange={(e) => setNewType(e.target.value)}
               className="w-full min-h-[44px] px-3.5 rounded-xl border border-slate-300 text-sm bg-white"
             >
-              <option value="School">School</option>
-              <option value="Hospital">Hospital / Nursing</option>
-              <option value="Bank">Bank</option>
-              <option value="Police Station">Police Station</option>
-              <option value="Fire Brigade">Fire Brigade</option>
-              <option value="Retail">Retail Business</option>
-              <option value="Factory">Factory / Industrial</option>
+              {EXHAUSTIVE_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+              <option value="__OTHER__" className="font-bold text-[#B91C1C]">
+                + Other (Add Custom Type...)
+              </option>
             </select>
+
+            {newType === '__OTHER__' && (
+              <input
+                required
+                placeholder="Enter custom category (e.g., Tea Estate, Silk Weaver...)"
+                value={customNewType}
+                onChange={(e) => setCustomNewType(e.target.value)}
+                className="w-full min-h-[44px] px-3.5 rounded-xl border border-amber-400 bg-amber-50/50 text-sm"
+              />
+            )}
+
             <input
               placeholder="Phone Number"
               value={newPhone}
