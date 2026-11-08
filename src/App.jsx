@@ -2,11 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceAndDirection } from './shared/geo.js';
 
-// Pulled strictly from GitHub Actions Secrets at build time (no hardcoded URL in public repo)
+// Pulled strictly from GitHub Actions Secrets at build time
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 const API_URL = API_BASE;
 
-// Unified fetch helper that prepends API_BASE and attaches Bearer token + credentials
 async function apiFetch(endpoint, options = {}) {
   const token = localStorage.getItem('post_radar_token');
   const headers = {
@@ -33,13 +32,13 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Location State
+  // GPS Coordinates State (No Pincode)
   const [coords, setCoords] = useState({ lat: 27.4728, lng: 94.9120 });
-  const [pincode, setPincode] = useState('787057');
-  const [locStatus, setLocStatus] = useState('Default Beat (Dhemaji HQ)');
+  const [locStatus, setLocStatus] = useState('Acquiring GPS...');
+  const [syncFlag, setSyncFlag] = useState(1);
   const [activeTab, setActiveTab] = useState('radar'); // 'radar' | 'diary' | 'admin'
 
-  // Login Form (Clean for production)
+  // Login Form
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -49,7 +48,31 @@ export default function App() {
   const [newType, setNewType] = useState('School');
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
-  const [newPin, setNewPin] = useState('787057');
+
+  const captureLocation = () => {
+    setLocStatus('Scanning GPS & MapmyIndia...');
+    if (!('geolocation' in navigator)) {
+      setCoords({ lat: 27.4728, lng: 94.9120 });
+      setLocStatus('Simulated GPS (27.4728, 94.9120)');
+      setSyncFlag((prev) => prev + 1);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        setCoords({ lat, lng });
+        setLocStatus(`GPS Locked (${lat.toFixed(4)}, ${lng.toFixed(4)}) ✓`);
+        setSyncFlag((prev) => prev + 1);
+      },
+      () => {
+        setCoords({ lat: 27.4728, lng: 94.9120 });
+        setLocStatus('Default GPS (27.4728, 94.9120)');
+        setSyncFlag((prev) => prev + 1);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('post_radar_token');
@@ -59,7 +82,10 @@ export default function App() {
     }
     apiFetch('/api/auth/me')
       .then((data) => {
-        if (data.user) setUser(data.user);
+        if (data.user) {
+          setUser(data.user);
+          captureLocation();
+        }
       })
       .catch(() => {
         localStorage.removeItem('post_radar_token');
@@ -78,6 +104,7 @@ export default function App() {
         localStorage.setItem('post_radar_token', data.token);
       }
       setUser(data.user);
+      captureLocation();
     } catch (err) {
       alert(err.message || 'Login failed');
     }
@@ -91,29 +118,6 @@ export default function App() {
     }
     localStorage.removeItem('post_radar_token');
     setUser(null);
-  };
-
-  const captureLocation = () => {
-    setLocStatus('Acquiring GPS...');
-    if (!('geolocation' in navigator)) {
-      setCoords({ lat: 27.4728, lng: 94.9120 });
-      setLocStatus('Simulated GPS (Dhemaji HQ)');
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({
-          lat: Number(pos.coords.latitude.toFixed(6)),
-          lng: Number(pos.coords.longitude.toFixed(6)),
-        });
-        setLocStatus('GPS Active & Locked ✓');
-      },
-      () => {
-        setCoords({ lat: 27.4728, lng: 94.9120 });
-        setLocStatus('Simulated GPS (Dhemaji HQ)');
-      },
-      { enableHighAccuracy: true }
-    );
   };
 
   if (authLoading) {
@@ -197,11 +201,11 @@ export default function App() {
           </button>
         </div>
 
-        {/* Location & Pincode Activator Bar */}
+        {/* Live GPS Status Bar (Beat Pincode Removed) */}
         <div className="mt-3 p-3 rounded-xl bg-red-950/80 border border-red-400/30 flex items-center justify-between text-xs">
           <div>
             <span className="block text-[10px] uppercase font-bold text-red-200">
-              Beat Pincode: {pincode}
+              MapmyIndia Live GPS Radar
             </span>
             <span className="font-bold text-amber-300">{locStatus}</span>
           </div>
@@ -210,7 +214,7 @@ export default function App() {
             onClick={captureLocation}
             className="min-h-[38px] px-3 rounded-lg bg-amber-400 hover:bg-amber-500 text-red-950 font-extrabold text-xs shadow-sm transition-all"
           >
-            📍 Activate GPS
+            📍 Scan Nearby
           </button>
         </div>
       </header>
@@ -254,12 +258,8 @@ export default function App() {
         {activeTab === 'radar' && (
           <RadarView
             coords={coords}
-            pincode={pincode}
-            setPincode={setPincode}
-            onOpenAddModal={() => {
-              setNewPin(pincode);
-              setShowAddModal(true);
-            }}
+            syncFlag={syncFlag}
+            onOpenAddModal={() => setShowAddModal(true)}
             user={user}
           />
         )}
@@ -267,7 +267,7 @@ export default function App() {
         {activeTab === 'admin' && canAccessAdmin && <AdminView user={user} />}
       </main>
 
-      {/* Add Location Modal */}
+      {/* Add Location Modal (No Pincode Input) */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-end justify-center">
           <form
@@ -281,7 +281,6 @@ export default function App() {
                     business_type: newType,
                     phone: newPhone,
                     address: newAddress,
-                    pincode: newPin,
                     lat: coords?.lat || 27.4728,
                     lng: coords?.lng || 94.9120,
                   }),
@@ -298,7 +297,7 @@ export default function App() {
             className="w-full max-w-[414px] bg-white rounded-t-3xl p-5 space-y-3 animate-in slide-in-from-bottom"
           >
             <div className="flex justify-between items-center">
-              <h3 className="font-bold text-base text-slate-900">Add New Institution / Business</h3>
+              <h3 className="font-bold text-base text-slate-900">Add New Institution at Current GPS</h3>
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
@@ -314,29 +313,19 @@ export default function App() {
               onChange={(e) => setNewName(e.target.value)}
               className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm"
             />
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={newType}
-                onChange={(e) => setNewType(e.target.value)}
-                className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm bg-white"
-              >
-                <option value="School">School</option>
-                <option value="Hospital">Hospital / Nursing</option>
-                <option value="Bank">Bank</option>
-                <option value="Police Station">Police Station</option>
-                <option value="Fire Brigade">Fire Brigade</option>
-                <option value="Retail">Retail Business</option>
-                <option value="Factory">Factory / Industrial</option>
-              </select>
-              <input
-                required
-                maxLength={6}
-                placeholder="6-digit Pincode"
-                value={newPin}
-                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm font-mono"
-              />
-            </div>
+            <select
+              value={newType}
+              onChange={(e) => setNewType(e.target.value)}
+              className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm bg-white"
+            >
+              <option value="School">School</option>
+              <option value="Hospital">Hospital / Nursing</option>
+              <option value="Bank">Bank</option>
+              <option value="Police Station">Police Station</option>
+              <option value="Fire Brigade">Fire Brigade</option>
+              <option value="Retail">Retail Business</option>
+              <option value="Factory">Factory / Industrial</option>
+            </select>
             <input
               placeholder="Phone Number"
               value={newPhone}
@@ -363,15 +352,15 @@ export default function App() {
 }
 
 // --- RADAR VIEW ---
-function RadarView({ coords, pincode, setPincode, onOpenAddModal, user }) {
+function RadarView({ coords, syncFlag, onOpenAddModal, user }) {
   const [selectedTypeFilter, setSelectedTypeFilter] = useState('ALL');
 
   const lat = coords?.lat || 27.4728;
   const lng = coords?.lng || 94.9120;
 
   const { data = { businesses: [] }, isLoading } = useQuery({
-    queryKey: ['businesses', lat, lng, pincode],
-    queryFn: () => apiFetch(`/api/businesses?lat=${lat}&lng=${lng}&pincode=${pincode}`),
+    queryKey: ['businesses', lat, lng, syncFlag],
+    queryFn: () => apiFetch(`/api/businesses?lat=${lat}&lng=${lng}&sync=1`),
   });
 
   const { data: configsData = { configs: [] } } = useQuery({
@@ -390,17 +379,15 @@ function RadarView({ coords, pincode, setPincode, onOpenAddModal, user }) {
 
   return (
     <div className="space-y-3">
-      {/* Pincode & Filter Bar */}
+      {/* Action Bar (Pincode Filter Removed) */}
       <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2">
-        <div className="flex items-center space-x-2">
-          <span className="text-xs font-bold text-slate-700">Pincode Filter:</span>
-          <input
-            type="text"
-            maxLength={6}
-            value={pincode}
-            onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            className="w-24 px-2.5 py-1.5 rounded-lg border text-xs font-mono font-bold bg-slate-50 text-center"
-          />
+        <div>
+          <span className="block text-xs font-bold text-slate-800">
+            Nearby Institutions ({filtered.length})
+          </span>
+          <span className="text-[11px] text-slate-500">
+            Auto-discovered from GPS coordinates
+          </span>
         </div>
         <button
           onClick={onOpenAddModal}
@@ -427,12 +414,14 @@ function RadarView({ coords, pincode, setPincode, onOpenAddModal, user }) {
       </div>
 
       {isLoading && (
-        <p className="text-center text-sm text-slate-500 py-6">Scanning area institutions...</p>
+        <p className="text-center text-sm text-slate-500 py-6">
+          Scanning nearby institutions via GPS...
+        </p>
       )}
 
       {!isLoading && filtered.length === 0 && (
         <div className="bg-white p-6 rounded-2xl text-center text-xs text-slate-500 border">
-          No institutions found for Pincode {pincode}. Click "＋ Add Location" to add one.
+          No institutions found in this category nearby. Tap "📍 Scan Nearby" or "＋ Add Location".
         </div>
       )}
 
@@ -477,7 +466,9 @@ function BusinessCard({ business, userCoords, orgConfigs, user }) {
     business.lat,
     business.lng
   );
-  const mapplsUrl = `https://www.mapmyindia.com/map?q=${business.lat},${business.lng}`;
+  const mapplsUrl = business.mappls_eloc
+    ? `https://mappls.com/${business.mappls_eloc}`
+    : `https://www.mapmyindia.com/map?q=${business.lat},${business.lng}`;
 
   const saveVisitMutation = useMutation({
     mutationFn: (payload) =>
@@ -512,9 +503,11 @@ function BusinessCard({ business, userCoords, orgConfigs, user }) {
             <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-slate-100 text-slate-700">
               {business.business_type}
             </span>
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-red-50 text-red-700">
-              PIN: {business.pincode}
-            </span>
+            {business.address && (
+              <span className="text-[10px] font-medium text-slate-500 truncate max-w-[180px]">
+                {business.address}
+              </span>
+            )}
           </div>
           <h2 className="text-base font-bold text-slate-900 mt-1">{business.name}</h2>
         </div>
@@ -547,7 +540,7 @@ function BusinessCard({ business, userCoords, orgConfigs, user }) {
         )}
       </div>
 
-      {/* MapmyIndia Link Button (No Digipin) */}
+      {/* MapmyIndia Link Button */}
       <div className="flex items-center gap-2">
         <a
           href={mapplsUrl}
@@ -673,7 +666,6 @@ function DiaryView({ user }) {
       'Executive',
       'Institution Name',
       'Category',
-      'Pincode',
       'Phone',
       'Address',
       'Visit Status',
@@ -693,7 +685,6 @@ function DiaryView({ user }) {
         e.executive_name || user.full_name,
         e.business_name || '',
         e.business_type || '',
-        e.pincode || '',
         e.phone || '',
         e.address || '',
         e.is_visited ? 'Visited' : 'Pending',
