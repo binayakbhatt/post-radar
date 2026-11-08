@@ -101,7 +101,7 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen max-w-[414px] mx-auto bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
+      <div className="min-h-screen w-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
         <img src="post-radar-mark.svg" className="w-10 h-10 animate-pulse mr-3" alt="Logo" />
         Loading Post Radar...
       </div>
@@ -110,18 +110,18 @@ export default function App() {
 
   if (!user) {
     return (
-      <main className="min-h-screen max-w-[414px] mx-auto bg-gradient-to-b from-[#B91C1C] to-red-950 text-white p-6 flex flex-col justify-center">
-        <div className="bg-white text-slate-900 rounded-3xl p-6 shadow-2xl space-y-4">
+      <main className="min-h-screen w-full bg-gradient-to-br from-[#B91C1C] via-red-900 to-slate-950 text-white p-6 flex items-center justify-center">
+        <div className="w-full max-w-md bg-white text-slate-900 rounded-3xl p-8 shadow-2xl space-y-5 border border-white/20">
           <div className="text-center flex flex-col items-center">
-            <img src="post-radar-mark.svg" className="w-16 h-16 mb-2" alt="Post Radar Logo" />
-            <span className="px-3 py-1 rounded-full bg-amber-400 text-red-950 font-black text-[10px] uppercase tracking-wider">
+            <img src="post-radar-mark.svg" className="w-16 h-16 mb-2.5" alt="Post Radar Logo" />
+            <span className="px-3.5 py-1 rounded-full bg-amber-400 text-red-950 font-black text-[10px] uppercase tracking-wider shadow-xs">
               Department of Posts • India Post
             </span>
-            <h1 className="text-2xl font-black mt-2 text-[#B91C1C]">Post Radar</h1>
+            <h1 className="text-2xl font-black mt-2.5 text-[#B91C1C]">Post Radar</h1>
             <p className="text-xs text-slate-500">Field Marketing & Institutional Intelligence</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-3">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Username</label>
               <input
@@ -130,7 +130,7 @@ export default function App() {
                 placeholder="Enter your username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm"
+                className="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B91C1C]"
               />
             </div>
             <div>
@@ -141,12 +141,12 @@ export default function App() {
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm"
+                className="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B91C1C]"
               />
             </div>
             <button
               type="submit"
-              className="w-full min-h-[48px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-sm shadow-md transition-all"
+              className="w-full min-h-[48px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-sm shadow-md transition-all cursor-pointer"
             >
               Sign In
             </button>
@@ -160,77 +160,117 @@ export default function App() {
   const isHighAcc = accuracy !== null && accuracy <= 50;
 
   return (
-    <div className="min-h-screen max-w-[414px] mx-auto bg-slate-100 flex flex-col pb-20 shadow-xl">
-      <header className="bg-[#B91C1C] text-white px-4 pt-4 pb-3 shadow-md">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-2.5">
-            <img src="post-radar-mark.svg" className="w-9 h-9 bg-white/10 rounded-full p-1" alt="Logo" />
-            <div>
-              <h1 className="text-base font-black tracking-tight leading-tight">Post Radar</h1>
-              <p className="text-[11px] text-red-100">
-                {user.full_name} ({user.role.replace('_', ' ')})
-              </p>
+    <div className="min-h-screen w-full bg-slate-100 flex flex-col pb-16">
+      {/* Full-Width Top Header */}
+      <header className="bg-[#B91C1C] text-white shadow-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4 pb-3 space-y-3">
+          <div className="flex flex-wrap justify-between items-center gap-3">
+            <div className="flex items-center space-x-3">
+              <img src="post-radar-mark.svg" className="w-10 h-10 bg-white/10 rounded-full p-1" alt="Logo" />
+              <div>
+                <h1 className="text-lg font-black tracking-tight leading-tight">Post Radar</h1>
+                <p className="text-xs text-red-100">
+                  {user.full_name} ({user.role.replace('_', ' ')})
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Desktop Navigation Pills */}
+              <nav className="hidden md:flex bg-red-900/60 p-1 rounded-xl border border-red-400/20 text-xs font-bold">
+                <button
+                  onClick={() => setActiveTab('radar')}
+                  className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                    activeTab === 'radar' ? 'bg-amber-400 text-red-950 shadow-xs' : 'text-red-100 hover:text-white'
+                  }`}
+                >
+                  Radar Leads
+                </button>
+                <button
+                  onClick={() => setActiveTab('diary')}
+                  className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                    activeTab === 'diary' ? 'bg-amber-400 text-red-950 shadow-xs' : 'text-red-100 hover:text-white'
+                  }`}
+                >
+                  My Diary
+                </button>
+                {canAccessAdmin && (
+                  <button
+                    onClick={() => setActiveTab('admin')}
+                    className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
+                      activeTab === 'admin' ? 'bg-amber-400 text-red-950 shadow-xs' : 'text-red-100 hover:text-white'
+                    }`}
+                  >
+                    Admin Panel
+                  </button>
+                )}
+              </nav>
+
+              <button
+                onClick={handleLogout}
+                className="min-h-[38px] px-3.5 rounded-xl bg-red-900 hover:bg-red-950 text-white font-bold text-xs shadow-xs cursor-pointer"
+              >
+                Logout
+              </button>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="min-h-[36px] px-3 rounded-lg bg-red-800 hover:bg-red-900 text-white font-bold text-xs shadow-xs"
-          >
-            Logout
-          </button>
-        </div>
 
-        {/* Live GPS Location & Embedded Leaflet Map Card */}
-        <div className="mt-3 p-3 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs space-y-2 shadow-lg">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-1.5">
-              <span className="text-cyan-400 text-sm">⊕</span>
-              <span className="font-bold text-white tracking-wide">
-                GPS Location / জিপিএছ অৱস্থান[cite: 5]
+          {/* Live GPS Location & Embedded Leaflet Map Card */}
+          <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs space-y-2.5 shadow-lg">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center space-x-2">
+                <span className="text-cyan-400 text-sm">⊕</span>
+                <span className="font-bold text-white tracking-wide">
+                  GPS Location / জিপিএছ অৱস্থান
+                </span>
+                <span className="hidden sm:inline-block font-mono text-slate-400 pl-2">
+                  ({coords.lat.toFixed(5)}, {coords.lng.toFixed(5)})
+                </span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <span className={`font-semibold ${isHighAcc ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  ● Accuracy / নিৰ্ভুলতা: {isHighAcc ? 'High' : 'Low'} (~{accuracy || 95}m)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowHeaderMap(!showHeaderMap)}
+                  className="text-[11px] text-slate-300 hover:text-white underline cursor-pointer"
+                >
+                  {showHeaderMap ? 'Hide Map' : 'Show Map'}
+                </button>
+                <button
+                  type="button"
+                  onClick={captureLocation}
+                  className="text-cyan-400 hover:text-cyan-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                >
+                  ↻ Refresh / পুনৰ কৰক
+                </button>
+              </div>
+            </div>
+
+            <div className="sm:hidden flex items-center justify-between text-[11px]">
+              <span className="font-mono text-slate-300">
+                {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
               </span>
             </div>
-            <div className="flex items-center space-x-2">
-              <button
-                type="button"
-                onClick={() => setShowHeaderMap(!showHeaderMap)}
-                className="text-[11px] text-slate-300 hover:text-white underline"
-              >
-                {showHeaderMap ? 'Hide Map' : 'Show Map'}
-              </button>
-              <button
-                type="button"
-                onClick={captureLocation}
-                className="text-cyan-400 hover:text-cyan-300 font-bold text-[11px] flex items-center gap-1"
-              >
-                ↻ Refresh / পুনৰ কৰক[cite: 5]
-              </button>
-            </div>
-          </div>
 
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="font-mono text-slate-300">
-              {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
-            </span>
-            <span className={`font-semibold ${isHighAcc ? 'text-emerald-400' : 'text-rose-400'}`}>
-              ● Accuracy / নিৰ্ভুলতা: {isHighAcc ? 'High' : 'Low'} (~{accuracy || 95}m)[cite: 5]
-            </span>
+            {showHeaderMap && (
+              <InlineLeafletMap
+                lat={coords.lat}
+                lng={coords.lng}
+                title="Your Current GPS Position"
+                heightClass="h-28 md:h-36"
+              />
+            )}
           </div>
-
-          {showHeaderMap && (
-            <InlineLeafletMap
-              lat={coords.lat}
-              lng={coords.lng}
-              title="Your Current GPS Position"
-              heightClass="h-28"
-            />
-          )}
         </div>
       </header>
 
+      {/* Mobile Navigation Tabs (Hidden on Desktop) */}
       <nav
-        className={`grid ${
+        className={`md:hidden grid ${
           canAccessAdmin ? 'grid-cols-3' : 'grid-cols-2'
-        } bg-white border-b border-slate-200 p-1 text-center text-xs font-bold text-slate-700`}
+        } bg-white border-b border-slate-200 p-1 text-center text-xs font-bold text-slate-700 sticky top-0 z-20`}
       >
         <button
           onClick={() => setActiveTab('radar')}
@@ -260,7 +300,8 @@ export default function App() {
         )}
       </nav>
 
-      <main className="p-3.5 flex-1">
+      {/* Responsive Main Container */}
+      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 py-5 flex-1">
         {activeTab === 'radar' && (
           <RadarView
             coords={coords}
@@ -273,8 +314,9 @@ export default function App() {
         {activeTab === 'admin' && canAccessAdmin && <AdminView user={user} />}
       </main>
 
+      {/* Centered Modal on Desktop, Bottom Sheet on Mobile */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-end justify-center">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -299,7 +341,7 @@ export default function App() {
                 alert(err.message || 'Failed to save location');
               }
             }}
-            className="w-full max-w-[414px] bg-white rounded-t-3xl p-5 space-y-3 animate-in slide-in-from-bottom"
+            className="w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl p-6 space-y-3.5 shadow-2xl"
           >
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-base text-slate-900">
@@ -308,7 +350,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="font-bold text-slate-500"
+                className="font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
               >
                 ✕
               </button>
@@ -318,12 +360,12 @@ export default function App() {
               placeholder="Institution Name (e.g., Dhemaji Public School)"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm"
+              className="w-full min-h-[44px] px-3.5 rounded-xl border border-slate-300 text-sm"
             />
             <select
               value={newType}
               onChange={(e) => setNewType(e.target.value)}
-              className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm bg-white"
+              className="w-full min-h-[44px] px-3.5 rounded-xl border border-slate-300 text-sm bg-white"
             >
               <option value="School">School</option>
               <option value="Hospital">Hospital / Nursing</option>
@@ -337,17 +379,17 @@ export default function App() {
               placeholder="Phone Number"
               value={newPhone}
               onChange={(e) => setNewPhone(e.target.value)}
-              className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm"
+              className="w-full min-h-[44px] px-3.5 rounded-xl border border-slate-300 text-sm"
             />
             <input
               placeholder="Address / Area Description"
               value={newAddress}
               onChange={(e) => setNewAddress(e.target.value)}
-              className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm"
+              className="w-full min-h-[44px] px-3.5 rounded-xl border border-slate-300 text-sm"
             />
             <button
               type="submit"
-              className="w-full min-h-[48px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-sm shadow-sm"
+              className="w-full min-h-[48px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-sm shadow-sm cursor-pointer"
             >
               Save Location to Area Radar
             </button>
