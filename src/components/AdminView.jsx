@@ -1,17 +1,8 @@
 // src/components/AdminView.jsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../lib/api.js';
-
-const STANDARD_CATEGORIES = [
-  'School',
-  'Hospital',
-  'Bank',
-  'Police Station',
-  'Fire Brigade',
-  'Retail',
-  'Factory',
-];
+import { EXHAUSTIVE_CATEGORIES } from '../lib/categories.js';
 
 export default function AdminView({ user }) {
   const queryClient = useQueryClient();
@@ -28,6 +19,7 @@ export default function AdminView({ user }) {
 
   // Pitch & Product Config State
   const [bizType, setBizType] = useState('School');
+  const [customBizType, setCustomBizType] = useState('');
   const [recommendedProduct, setRecommendedProduct] = useState('');
   const [pitchScript, setPitchScript] = useState('');
   const [editingConfigId, setEditingConfigId] = useState(null);
@@ -41,6 +33,15 @@ export default function AdminView({ user }) {
     queryKey: ['admin_configs_manage'],
     queryFn: () => apiFetch('/api/admin/configs'),
   });
+
+  // Merge standard exhaustive list with any custom categories already saved in DB
+  const allCategories = useMemo(() => {
+    const set = new Set(EXHAUSTIVE_CATEGORIES);
+    (configsData?.configs || []).forEach((c) => {
+      if (c.business_type) set.add(c.business_type.trim());
+    });
+    return Array.from(set);
+  }, [configsData]);
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -88,19 +89,27 @@ export default function AdminView({ user }) {
 
   const handleSaveConfig = async (e) => {
     e.preventDefault();
+    const finalBizType = bizType === '__OTHER__' ? customBizType.trim() : bizType.trim();
+    if (!finalBizType) {
+      alert('Please enter a custom business/institution type.');
+      return;
+    }
+
     try {
       await apiFetch('/api/admin/configs', {
         method: 'POST',
         body: JSON.stringify({
-          business_type: bizType,
+          business_type: finalBizType,
           recommended_product: recommendedProduct,
           pitch_script: pitchScript,
         }),
       });
       setEditingConfigId(null);
+      setBizType(finalBizType);
+      setCustomBizType('');
       queryClient.invalidateQueries({ queryKey: ['configs'] });
       queryClient.invalidateQueries({ queryKey: ['admin_configs_manage'] });
-      alert(`Pitch & Product configuration for "${bizType}" updated successfully!`);
+      alert(`Pitch & Product configuration for "${finalBizType}" updated successfully!`);
     } catch (err) {
       alert(err.message || 'Failed to update configuration');
     }
@@ -108,12 +117,13 @@ export default function AdminView({ user }) {
 
   const handleSelectConfigToEdit = (config) => {
     const matchedType =
-      STANDARD_CATEGORIES.find(
+      allCategories.find(
         (t) => t.toLowerCase() === (config.business_type || '').trim().toLowerCase()
       ) || config.business_type;
 
     setEditingConfigId(config.id);
     setBizType(matchedType);
+    setCustomBizType('');
     setRecommendedProduct(config.recommended_product || '');
     setPitchScript(config.pitch_script || '');
 
@@ -139,7 +149,7 @@ export default function AdminView({ user }) {
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-bold uppercase text-[#B91C1C]">
               {editingConfigId
-                ? `Editing Pitch: ${bizType}`
+                ? `Editing Pitch: ${bizType === '__OTHER__' ? customBizType : bizType}`
                 : 'Configure Pitch & Products by Category'}
             </h3>
             {editingConfigId && (
@@ -166,6 +176,13 @@ export default function AdminView({ user }) {
               onChange={(e) => {
                 const selectedType = e.target.value;
                 setBizType(selectedType);
+                if (selectedType === '__OTHER__') {
+                  setEditingConfigId(null);
+                  setCustomBizType('');
+                  setRecommendedProduct('');
+                  setPitchScript('');
+                  return;
+                }
                 const existing = (configsData?.configs || []).find(
                   (c) => c.business_type.toLowerCase() === selectedType.toLowerCase()
                 );
@@ -181,13 +198,31 @@ export default function AdminView({ user }) {
               }}
               className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm bg-white"
             >
-              {STANDARD_CATEGORIES.map((cat) => (
+              {allCategories.map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
                 </option>
               ))}
+              <option value="__OTHER__" className="font-bold text-[#B91C1C]">
+                + Other (Add Custom Category...)
+              </option>
             </select>
           </div>
+
+          {bizType === '__OTHER__' && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
+              <label className="block text-[11px] font-bold text-amber-950">
+                Enter New Custom Category Name
+              </label>
+              <input
+                required
+                placeholder="e.g., Bamboo Processing Unit, Army Cantonment, Cold Storage..."
+                value={customBizType}
+                onChange={(e) => setCustomBizType(e.target.value)}
+                className="w-full min-h-[40px] px-3 rounded-xl border border-amber-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#B91C1C]"
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-[11px] font-bold text-slate-700 mb-1">
@@ -226,8 +261,10 @@ export default function AdminView({ user }) {
         </form>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2.5 shadow-xs">
-          <h3 className="text-xs font-bold uppercase text-slate-700">Active Category Pitches</h3>
-          <div className="space-y-2">
+          <h3 className="text-xs font-bold uppercase text-slate-700">
+            Active Category Pitches ({(configsData?.configs || []).length})
+          </h3>
+          <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
             {(configsData?.configs || []).map((cfg) => {
               const isSelected = editingConfigId === cfg.id;
               return (
