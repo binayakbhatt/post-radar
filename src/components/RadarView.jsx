@@ -19,9 +19,17 @@ export default function RadarView({ coords, syncFlag, onOpenAddModal, user }) {
     queryKey: ['configs'],
     queryFn: () => apiFetch('/api/admin/configs'),
   });
-
-  const categories = ['ALL', 'School', 'Hospital', 'Bank', 'Police Station', 'Retail', 'Factory'];
   const businessesList = data?.businesses || [];
+  // Dynamically include all categories present in nearby leads + core categories
+  const categories = React.useMemo(() => {
+    const core = ['ALL', 'School', 'Hospital', 'Bank', 'Police Station', 'Retail', 'Factory'];
+    const dynamicSet = new Set(core);
+    businessesList.forEach((b) => {
+      if (b.business_type) dynamicSet.add(b.business_type);
+    });
+    return Array.from(dynamicSet);
+  }, [businessesList]);
+ 
   const filtered =
     selectedTypeFilter === 'ALL'
       ? businessesList
