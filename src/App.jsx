@@ -215,22 +215,19 @@ export default function App() {
             </div>
           </div>
 
-          {/* Live GPS Location & Embedded Leaflet Map Card */}
+          {/* Live GPS Location & Embedded Leaflet Map Card (Clean English Only) */}
           <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs space-y-2.5 shadow-lg">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center space-x-2">
                 <span className="text-cyan-400 text-sm">⊕</span>
                 <span className="font-bold text-white tracking-wide">
-                  GPS Location / জিপিএছ অৱস্থান
+                  GPS Location
                 </span>
-                <span className="hidden sm:inline-block font-mono text-slate-400 pl-2">
+                <span className="hidden sm:inline-block font-mono text-slate-400 pl-1">
                   ({coords.lat.toFixed(5)}, {coords.lng.toFixed(5)})
                 </span>
               </div>
               <div className="flex items-center space-x-3">
-                <span className={`font-semibold ${isHighAcc ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  ● Accuracy / নিৰ্ভুলতা: {isHighAcc ? 'High' : 'Low'} (~{accuracy || 95}m)
-                </span>
                 <button
                   type="button"
                   onClick={() => setShowHeaderMap(!showHeaderMap)}
@@ -243,14 +240,17 @@ export default function App() {
                   onClick={captureLocation}
                   className="text-cyan-400 hover:text-cyan-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
                 >
-                  ↻ Refresh / পুনৰ কৰক
+                  ↻ Refresh
                 </button>
               </div>
             </div>
 
-            <div className="sm:hidden flex items-center justify-between text-[11px]">
-              <span className="font-mono text-slate-300">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="sm:hidden font-mono text-slate-300">
                 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+              </span>
+              <span className={`font-semibold ${isHighAcc ? 'text-emerald-400' : 'text-rose-400'}`}>
+                ● Accuracy: {isHighAcc ? 'High' : 'Low'} (~{accuracy || 95}m)
               </span>
             </div>
 
