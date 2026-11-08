@@ -160,23 +160,26 @@ export default function BusinessCard({ business, userCoords, orgConfigs, user })
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-bold text-slate-700 flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isVisited}
-                onChange={(e) => setIsVisited(e.target.checked)}
-                className="w-4 h-4 text-red-600 rounded"
-              />
-              Mark as Visited Today
-            </label>
-            <input
-              type="date"
-              value={nextFollowUp}
-              onChange={(e) => setNextFollowUp(e.target.value)}
-              className="text-xs border rounded-lg px-2 py-1 bg-white"
-            />
-          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+  <label className="text-xs font-bold text-slate-700 flex items-center gap-2 cursor-pointer">
+    <input
+      type="checkbox"
+      checked={isVisited}
+      onChange={(e) => setIsVisited(e.target.checked)}
+      className="w-4 h-4 text-red-600 rounded"
+    />
+    Mark as Visited Today
+  </label>
+  <div className="flex items-center space-x-1.5">
+    <label className="text-[11px] font-bold text-slate-600">Next Follow-Up Date:</label>
+    <input
+      type="date"
+      value={nextFollowUp}
+      onChange={(e) => setNextFollowUp(e.target.value)}
+      className="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-red-600"
+    />
+  </div>
+</div>
 
           <div>
             <label className="block text-[11px] font-bold text-slate-600 mb-1">Visit Remark</label>
