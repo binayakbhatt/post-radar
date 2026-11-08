@@ -7,7 +7,6 @@ import RadarView from './components/RadarView.jsx';
 import DiaryView from './components/DiaryView.jsx';
 import AdminView from './components/AdminView.jsx';
 import { EXHAUSTIVE_CATEGORIES } from './lib/categories.js';
-const [customNewType, setCustomNewType] = useState('');
 
 export default function App() {
   const queryClient = useQueryClient();
@@ -29,6 +28,7 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('School');
+  const [customNewType, setCustomNewType] = useState(''); // <-- FIXED: Moved inside App component
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
 
@@ -217,7 +217,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Live GPS Location & Embedded Leaflet Map Card (Clean English Only) */}
+          {/* Live GPS Location & Embedded Leaflet Map Card */}
           <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs space-y-2.5 shadow-lg">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center space-x-2">
@@ -268,7 +268,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Mobile Navigation Tabs (Hidden on Desktop) */}
+      {/* Mobile Navigation Tabs */}
       <nav
         className={`md:hidden grid ${
           canAccessAdmin ? 'grid-cols-3' : 'grid-cols-2'
@@ -316,7 +316,6 @@ export default function App() {
         {activeTab === 'admin' && canAccessAdmin && <AdminView user={user} />}
       </main>
 
-      {/* Centered Modal on Desktop, Bottom Sheet on Mobile */}
       {/* Centered Modal on Desktop, Bottom Sheet on Mobile */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-end sm:items-center justify-center p-0 sm:p-4">
