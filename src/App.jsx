@@ -2,10 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceAndDirection } from './shared/geo.js';
 
-// Clean the base URL to prevent trailing slash double-slashes (e.g. //api)
+// Pulled strictly from GitHub Actions Secrets at build time (no hardcoded URL in public repo)
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 const API_URL = API_BASE;
 
+// Unified fetch helper that prepends API_BASE and attaches Bearer token + credentials
+async function apiFetch(endpoint, options = {}) {
+  const token = localStorage.getItem('post_radar_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers,
+    credentials: 'include',
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `Request failed (${res.status})`);
+  }
+  return data;
+}
 
 export default function App() {
   const queryClient = useQueryClient();
@@ -18,9 +39,9 @@ export default function App() {
   const [locStatus, setLocStatus] = useState('Default Beat (Dhemaji HQ)');
   const [activeTab, setActiveTab] = useState('radar'); // 'radar' | 'diary' | 'admin'
 
-  // Login Form
-  const [username, setUsername] = useState('superadmin');
-  const [password, setPassword] = useState('super123');
+  // Login Form (Clean for production)
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
 
   // New Location Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -31,27 +52,45 @@ export default function App() {
   const [newPin, setNewPin] = useState('787057');
 
   useEffect(() => {
-    fetch(`${API_URL}/api/auth/me`)
-      .then((res) => res.json())
+    const token = localStorage.getItem('post_radar_token');
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
+    apiFetch('/api/auth/me')
       .then((data) => {
         if (data.user) setUser(data.user);
+      })
+      .catch(() => {
+        localStorage.removeItem('post_radar_token');
       })
       .finally(() => setAuthLoading(false));
   }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    const data = await res.json();
-    if (res.ok) {
+    try {
+      const data = await apiFetch('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      });
+      if (data.token) {
+        localStorage.setItem('post_radar_token', data.token);
+      }
       setUser(data.user);
-    } else {
-      alert(data.error || 'Login failed');
+    } catch (err) {
+      alert(err.message || 'Login failed');
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      // Ignore network errors on logout
+    }
+    localStorage.removeItem('post_radar_token');
+    setUser(null);
   };
 
   const captureLocation = () => {
@@ -63,7 +102,10 @@ export default function App() {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setCoords({ lat: Number(pos.coords.latitude.toFixed(6)), lng: Number(pos.coords.longitude.toFixed(6)) });
+        setCoords({
+          lat: Number(pos.coords.latitude.toFixed(6)),
+          lng: Number(pos.coords.longitude.toFixed(6)),
+        });
         setLocStatus('GPS Active & Locked ✓');
       },
       () => {
@@ -102,6 +144,7 @@ export default function App() {
               <input
                 type="text"
                 required
+                placeholder="Enter your username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm"
@@ -112,22 +155,19 @@ export default function App() {
               <input
                 type="password"
                 required
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full min-h-[46px] px-3.5 rounded-xl border border-slate-300 text-sm"
               />
             </div>
-            <button type="submit" className="w-full min-h-[48px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-sm shadow-md transition-all">
+            <button
+              type="submit"
+              className="w-full min-h-[48px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-sm shadow-md transition-all"
+            >
               Sign In
             </button>
           </form>
-
-          <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-xl border space-y-1">
-            <p className="font-bold text-slate-700">Quick Demo Logins:</p>
-            <p>• Super Admin: <code className="text-red-700 font-bold">superadmin</code> / <code className="text-red-700 font-bold">super123</code></p>
-            <p>• Admin: <code className="text-red-700 font-bold">admin</code> / <code className="text-red-700 font-bold">admin123</code></p>
-            <p>• Executive: <code className="text-red-700 font-bold">rohan</code> / <code className="text-red-700 font-bold">rohan123</code></p>
-          </div>
         </div>
       </main>
     );
@@ -144,14 +184,13 @@ export default function App() {
             <img src="post-radar-mark.svg" className="w-9 h-9 bg-white/10 rounded-full p-1" alt="Logo" />
             <div>
               <h1 className="text-base font-black tracking-tight leading-tight">Post Radar</h1>
-              <p className="text-[11px] text-red-100">{user.full_name} ({user.role.replace('_', ' ')})</p>
+              <p className="text-[11px] text-red-100">
+                {user.full_name} ({user.role.replace('_', ' ')})
+              </p>
             </div>
           </div>
           <button
-            onClick={async () => {
-              await fetch('/api/auth/logout', { method: 'POST' });
-              setUser(null);
-            }}
+            onClick={handleLogout}
             className="min-h-[36px] px-3 rounded-lg bg-red-800 hover:bg-red-900 text-white font-bold text-xs shadow-xs"
           >
             Logout
@@ -161,7 +200,9 @@ export default function App() {
         {/* Location & Pincode Activator Bar */}
         <div className="mt-3 p-3 rounded-xl bg-red-950/80 border border-red-400/30 flex items-center justify-between text-xs">
           <div>
-            <span className="block text-[10px] uppercase font-bold text-red-200">Beat Pincode: {pincode}</span>
+            <span className="block text-[10px] uppercase font-bold text-red-200">
+              Beat Pincode: {pincode}
+            </span>
             <span className="font-bold text-amber-300">{locStatus}</span>
           </div>
           <button
@@ -175,23 +216,33 @@ export default function App() {
       </header>
 
       {/* Navigation Tabs */}
-      <nav className={`grid ${canAccessAdmin ? 'grid-cols-3' : 'grid-cols-2'} bg-white border-b border-slate-200 p-1 text-center text-xs font-bold text-slate-700`}>
+      <nav
+        className={`grid ${
+          canAccessAdmin ? 'grid-cols-3' : 'grid-cols-2'
+        } bg-white border-b border-slate-200 p-1 text-center text-xs font-bold text-slate-700`}
+      >
         <button
           onClick={() => setActiveTab('radar')}
-          className={`py-2.5 rounded-lg transition-all ${activeTab === 'radar' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'}`}
+          className={`py-2.5 rounded-lg transition-all ${
+            activeTab === 'radar' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'
+          }`}
         >
           Radar Leads
         </button>
         <button
           onClick={() => setActiveTab('diary')}
-          className={`py-2.5 rounded-lg transition-all ${activeTab === 'diary' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'}`}
+          className={`py-2.5 rounded-lg transition-all ${
+            activeTab === 'diary' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'
+          }`}
         >
           My Diary
         </button>
         {canAccessAdmin && (
           <button
             onClick={() => setActiveTab('admin')}
-            className={`py-2.5 rounded-lg transition-all ${activeTab === 'admin' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'}`}
+            className={`py-2.5 rounded-lg transition-all ${
+              activeTab === 'admin' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'
+            }`}
           >
             Admin Panel
           </button>
@@ -222,30 +273,39 @@ export default function App() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              await fetch('/api/businesses', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  name: newName,
-                  business_type: newType,
-                  phone: newPhone,
-                  address: newAddress,
-                  pincode: newPin,
-                  lat: coords?.lat || 27.4728,
-                  lng: coords?.lng || 94.9120
-                })
-              });
-              setShowAddModal(false);
-              setNewName('');
-              setNewPhone('');
-              setNewAddress('');
-              queryClient.invalidateQueries({ queryKey: ['businesses'] });
+              try {
+                await apiFetch('/api/businesses', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    name: newName,
+                    business_type: newType,
+                    phone: newPhone,
+                    address: newAddress,
+                    pincode: newPin,
+                    lat: coords?.lat || 27.4728,
+                    lng: coords?.lng || 94.9120,
+                  }),
+                });
+                setShowAddModal(false);
+                setNewName('');
+                setNewPhone('');
+                setNewAddress('');
+                queryClient.invalidateQueries({ queryKey: ['businesses'] });
+              } catch (err) {
+                alert(err.message || 'Failed to save location');
+              }
             }}
             className="w-full max-w-[414px] bg-white rounded-t-3xl p-5 space-y-3 animate-in slide-in-from-bottom"
           >
             <div className="flex justify-between items-center">
               <h3 className="font-bold text-base text-slate-900">Add New Institution / Business</h3>
-              <button type="button" onClick={() => setShowAddModal(false)} className="font-bold text-slate-500">✕</button>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="font-bold text-slate-500"
+              >
+                ✕
+              </button>
             </div>
             <input
               required
@@ -289,7 +349,10 @@ export default function App() {
               onChange={(e) => setNewAddress(e.target.value)}
               className="w-full min-h-[44px] px-3 rounded-xl border border-slate-300 text-sm"
             />
-            <button type="submit" className="w-full min-h-[48px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-sm shadow-sm">
+            <button
+              type="submit"
+              className="w-full min-h-[48px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-sm shadow-sm"
+            >
               Save Location to Area Radar
             </button>
           </form>
@@ -301,7 +364,6 @@ export default function App() {
 
 // --- RADAR VIEW ---
 function RadarView({ coords, pincode, setPincode, onOpenAddModal, user }) {
-  const queryClient = useQueryClient();
   const [selectedTypeFilter, setSelectedTypeFilter] = useState('ALL');
 
   const lat = coords?.lat || 27.4728;
@@ -309,21 +371,22 @@ function RadarView({ coords, pincode, setPincode, onOpenAddModal, user }) {
 
   const { data = { businesses: [] }, isLoading } = useQuery({
     queryKey: ['businesses', lat, lng, pincode],
-    queryFn: async () => {
-      const res = await fetch(`/api/businesses?lat=${lat}&lng=${lng}&pincode=${pincode}`);
-      return res.json();
-    }
+    queryFn: () => apiFetch(`/api/businesses?lat=${lat}&lng=${lng}&pincode=${pincode}`),
   });
 
   const { data: configsData = { configs: [] } } = useQuery({
     queryKey: ['configs'],
-    queryFn: async () => (await fetch('/api/admin/configs')).json()
+    queryFn: () => apiFetch('/api/admin/configs'),
   });
 
   const categories = ['ALL', 'School', 'Hospital', 'Bank', 'Police Station', 'Retail', 'Factory'];
-  const filtered = selectedTypeFilter === 'ALL'
-    ? data.businesses
-    : data.businesses.filter(b => b.business_type.toLowerCase() === selectedTypeFilter.toLowerCase());
+  const businessesList = data?.businesses || [];
+  const filtered =
+    selectedTypeFilter === 'ALL'
+      ? businessesList
+      : businessesList.filter(
+          (b) => b.business_type.toLowerCase() === selectedTypeFilter.toLowerCase()
+        );
 
   return (
     <div className="space-y-3">
@@ -348,12 +411,14 @@ function RadarView({ coords, pincode, setPincode, onOpenAddModal, user }) {
       </div>
 
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-        {categories.map(cat => (
+        {categories.map((cat) => (
           <button
             key={cat}
             onClick={() => setSelectedTypeFilter(cat)}
             className={`min-h-[38px] px-3 rounded-xl text-xs font-bold shrink-0 transition-all ${
-              selectedTypeFilter === cat ? 'bg-[#B91C1C] text-white shadow-xs' : 'bg-white border text-slate-700 hover:bg-slate-50'
+              selectedTypeFilter === cat
+                ? 'bg-[#B91C1C] text-white shadow-xs'
+                : 'bg-white border text-slate-700 hover:bg-slate-50'
             }`}
           >
             {cat}
@@ -361,11 +426,25 @@ function RadarView({ coords, pincode, setPincode, onOpenAddModal, user }) {
         ))}
       </div>
 
-      {isLoading && <p className="text-center text-sm text-slate-500 py-6">Scanning area institutions...</p>}
+      {isLoading && (
+        <p className="text-center text-sm text-slate-500 py-6">Scanning area institutions...</p>
+      )}
+
+      {!isLoading && filtered.length === 0 && (
+        <div className="bg-white p-6 rounded-2xl text-center text-xs text-slate-500 border">
+          No institutions found for Pincode {pincode}. Click "＋ Add Location" to add one.
+        </div>
+      )}
 
       <div className="space-y-3">
-        {filtered.map(biz => (
-          <BusinessCard key={biz.id} business={biz} userCoords={{ lat, lng }} orgConfigs={configsData.configs} user={user} />
+        {filtered.map((biz) => (
+          <BusinessCard
+            key={biz.id}
+            business={biz}
+            userCoords={{ lat, lng }}
+            orgConfigs={configsData?.configs || []}
+            user={user}
+          />
         ))}
       </div>
     </div>
@@ -385,28 +464,31 @@ function BusinessCard({ business, userCoords, orgConfigs, user }) {
   const [diaryDetails, setDiaryDetails] = useState(business.diary_details || '');
 
   const matchedConfig = orgConfigs.find(
-    c => c.business_type.toLowerCase() === business.business_type.toLowerCase()
+    (c) => c.business_type.toLowerCase() === business.business_type.toLowerCase()
   ) || {
     recommended_product: 'India Post Corporate Speed Post & Business Parcel',
-    pitch_script: 'Namaskar! We are visiting from India Post to offer preferential corporate business rates and dedicated pickup.'
+    pitch_script:
+      'Namaskar! We are visiting from India Post to offer preferential corporate business rates and dedicated pickup.',
   };
 
-  const distDir = formatDistanceAndDirection(userCoords.lat, userCoords.lng, business.lat, business.lng);
+  const distDir = formatDistanceAndDirection(
+    userCoords.lat,
+    userCoords.lng,
+    business.lat,
+    business.lng
+  );
   const mapplsUrl = `https://www.mapmyindia.com/map?q=${business.lat},${business.lng}`;
 
   const saveVisitMutation = useMutation({
-    mutationFn: async (payload) => {
-      const res = await fetch('/api/visits', {
+    mutationFn: (payload) =>
+      apiFetch('/api/visits', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      return res.json();
-    },
+        body: JSON.stringify(payload),
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['businesses'] });
       queryClient.invalidateQueries({ queryKey: ['diary'] });
-    }
+    },
   });
 
   const handleSave = () => {
@@ -417,7 +499,7 @@ function BusinessCard({ business, userCoords, orgConfigs, user }) {
       visit_remark: visitRemark,
       next_follow_up_date: nextFollowUp,
       added_to_diary: addToDiary,
-      diary_details: diaryDetails
+      diary_details: diaryDetails,
     });
     alert('Visit & Diary details saved successfully!');
   };
@@ -441,9 +523,7 @@ function BusinessCard({ business, userCoords, orgConfigs, user }) {
         </span>
       </div>
 
-      {business.phone && (
-        <p className="text-xs text-blue-700 font-medium">📞 {business.phone}</p>
-      )}
+      {business.phone && <p className="text-xs text-blue-700 font-medium">📞 {business.phone}</p>}
 
       {/* Recommended Products Section */}
       <div className="rounded-xl bg-red-50 border border-red-200 p-3 space-y-2">
@@ -491,8 +571,14 @@ function BusinessCard({ business, userCoords, orgConfigs, user }) {
           {business.is_visited === 1 && (
             <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1">
               <p className="font-bold">✓ Previously Visited</p>
-              <p><b>Remark:</b> {business.visit_remark || 'None'}</p>
-              {business.next_follow_up_date && <p><b>Follow-up:</b> {business.next_follow_up_date}</p>}
+              <p>
+                <b>Remark:</b> {business.visit_remark || 'None'}
+              </p>
+              {business.next_follow_up_date && (
+                <p>
+                  <b>Follow-up:</b> {business.next_follow_up_date}
+                </p>
+              )}
             </div>
           )}
 
@@ -564,27 +650,43 @@ function DiaryView({ user }) {
   const [mode, setMode] = useState('personal'); // 'personal' | 'divisional'
   const { data = { diary: [] }, isLoading } = useQuery({
     queryKey: ['diary', mode],
-    queryFn: async () => {
-      const endpoint = mode === 'divisional' ? '/api/diary/divisional' : '/api/diary';
-      const res = await fetch(endpoint);
-      return res.json();
-    }
+    queryFn: () => apiFetch(mode === 'divisional' ? '/api/diary/divisional' : '/api/diary'),
   });
+
+  const diaryEntries = data?.diary || [];
 
   const exportDiaryToExcel = (entries) => {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
     xml += '<?mso-application progid="Excel.Sheet"?>\n';
-    xml += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
+    xml +=
+      '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
     xml += '<Styles>\n';
-    xml += '<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#B91C1C" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>\n';
-    xml += '<Style ss:ID="Cell"><Alignment ss:Vertical="Top"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>\n';
+    xml +=
+      '<Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#B91C1C" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center"/></Style>\n';
+    xml +=
+      '<Style ss:ID="Cell"><Alignment ss:Vertical="Top"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E2E8F0"/></Borders></Style>\n';
     xml += '</Styles>\n';
     xml += '<Worksheet ss:Name="Field Diary">\n<Table>\n';
 
-    const headers = ['Date', 'Executive', 'Institution Name', 'Category', 'Pincode', 'Phone', 'Address', 'Visit Status', 'Visit Remark', 'Diary Notes', 'Next Follow-Up'];
-    xml += '<Row>' + headers.map(h => `<Cell ss:StyleID="Header"><Data ss:Type="String">${h}</Data></Cell>`).join('') + '</Row>\n';
+    const headers = [
+      'Date',
+      'Executive',
+      'Institution Name',
+      'Category',
+      'Pincode',
+      'Phone',
+      'Address',
+      'Visit Status',
+      'Visit Remark',
+      'Diary Notes',
+      'Next Follow-Up',
+    ];
+    xml +=
+      '<Row>' +
+      headers.map((h) => `<Cell ss:StyleID="Header"><Data ss:Type="String">${h}</Data></Cell>`).join('') +
+      '</Row>\n';
 
-    entries.forEach(e => {
+    entries.forEach((e) => {
       const dateStr = new Date((e.visited_at || Date.now() / 1000) * 1000).toLocaleDateString();
       const rowData = [
         dateStr,
@@ -597,9 +699,19 @@ function DiaryView({ user }) {
         e.is_visited ? 'Visited' : 'Pending',
         e.visit_remark || '',
         e.diary_details || '',
-        e.next_follow_up_date || ''
+        e.next_follow_up_date || '',
       ];
-      xml += '<Row>' + rowData.map(val => `<Cell ss:StyleID="Cell"><Data ss:Type="String">${String(val).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</Data></Cell>`).join('') + '</Row>\n';
+      xml +=
+        '<Row>' +
+        rowData
+          .map(
+            (val) =>
+              `<Cell ss:StyleID="Cell"><Data ss:Type="String">${String(val)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')}</Data></Cell>`
+          )
+          .join('') +
+        '</Row>\n';
     });
 
     xml += '</Table>\n</Worksheet>\n</Workbook>';
@@ -625,20 +737,24 @@ function DiaryView({ user }) {
             <div className="flex bg-slate-200 p-0.5 rounded-lg text-xs font-bold">
               <button
                 onClick={() => setMode('personal')}
-                className={`px-2.5 py-1 rounded-md transition-all ${mode === 'personal' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  mode === 'personal' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                }`}
               >
                 My Diary
               </button>
               <button
                 onClick={() => setMode('divisional')}
-                className={`px-2.5 py-1 rounded-md transition-all ${mode === 'divisional' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'}`}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  mode === 'divisional' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
+                }`}
               >
                 Divisional
               </button>
             </div>
           )}
           <button
-            onClick={() => exportDiaryToExcel(data.diary)}
+            onClick={() => exportDiaryToExcel(diaryEntries)}
             className="min-h-[36px] px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs flex items-center gap-1"
           >
             📊 Export Excel (.xls)
@@ -647,25 +763,36 @@ function DiaryView({ user }) {
       </div>
 
       {isLoading && <p className="text-xs text-slate-500">Loading diary entries...</p>}
-      {data.diary.length === 0 && (
+      {!isLoading && diaryEntries.length === 0 && (
         <div className="bg-white p-6 rounded-2xl text-center text-xs text-slate-500 border">
           No entries added to diary yet. Expand business cards and check "Add to Personal Field Diary".
         </div>
       )}
-      {data.diary.map(entry => (
-        <div key={entry.id} className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-1.5 shadow-xs">
+      {diaryEntries.map((entry) => (
+        <div
+          key={entry.id}
+          className="bg-white p-3.5 rounded-2xl border border-slate-200 space-y-1.5 shadow-xs"
+        >
           <div className="flex justify-between items-center">
             <div>
               <span className="text-xs font-bold text-[#B91C1C]">{entry.business_name}</span>
-              {mode === 'divisional' && <span className="ml-2 text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">By: {entry.executive_name}</span>}
+              {mode === 'divisional' && (
+                <span className="ml-2 text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-semibold">
+                  By: {entry.executive_name}
+                </span>
+              )}
             </div>
             <span className="text-[10px] text-slate-400 font-mono">
               {new Date(entry.visited_at * 1000).toLocaleDateString()}
             </span>
           </div>
-          <p className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg">{entry.diary_details || entry.visit_remark || 'No remark'}</p>
+          <p className="text-xs text-slate-700 bg-slate-50 p-2 rounded-lg">
+            {entry.diary_details || entry.visit_remark || 'No remark'}
+          </p>
           {entry.next_follow_up_date && (
-            <p className="text-[11px] font-semibold text-emerald-700">📅 Follow-up: {entry.next_follow_up_date}</p>
+            <p className="text-[11px] font-semibold text-emerald-700">
+              📅 Follow-up: {entry.next_follow_up_date}
+            </p>
           )}
         </div>
       ))}
@@ -683,26 +810,32 @@ function AdminView({ user }) {
 
   const { data: usersData = { users: [] } } = useQuery({
     queryKey: ['admin_users'],
-    queryFn: async () => (await fetch('/api/admin/users')).json()
+    queryFn: () => apiFetch('/api/admin/users'),
   });
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
-    await fetch('/api/admin/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, full_name: fullName, role })
-    });
-    setUsername('');
-    setPassword('');
-    setFullName('');
-    queryClient.invalidateQueries({ queryKey: ['admin_users'] });
-    alert('User created successfully!');
+    try {
+      await apiFetch('/api/admin/users', {
+        method: 'POST',
+        body: JSON.stringify({ username, password, full_name: fullName, role }),
+      });
+      setUsername('');
+      setPassword('');
+      setFullName('');
+      queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+      alert('User created successfully!');
+    } catch (err) {
+      alert(err.message || 'Failed to create user');
+    }
   };
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleCreateUser} className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+      <form
+        onSubmit={handleCreateUser}
+        className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3"
+      >
         <h3 className="text-xs font-bold uppercase text-[#B91C1C]">Create User ID & Password</h3>
         <input
           required
@@ -737,7 +870,10 @@ function AdminView({ user }) {
           <option value="admin">Divisional Admin</option>
           {user.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
         </select>
-        <button type="submit" className="w-full min-h-[44px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-xs">
+        <button
+          type="submit"
+          className="w-full min-h-[44px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-xs"
+        >
           Create User Credentials
         </button>
       </form>
@@ -745,13 +881,22 @@ function AdminView({ user }) {
       <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2">
         <h3 className="text-xs font-bold uppercase text-slate-700">Active User Roster</h3>
         <div className="space-y-2">
-          {usersData.users.map(u => (
-            <div key={u.id} className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 border text-xs">
+          {(usersData?.users || []).map((u) => (
+            <div
+              key={u.id}
+              className="flex justify-between items-center p-2.5 rounded-xl bg-slate-50 border text-xs"
+            >
               <div>
-                <p className="font-bold text-slate-900">{u.full_name} ({u.username})</p>
-                <span className="text-[10px] uppercase font-semibold text-slate-500">{u.role.replace('_', ' ')}</span>
+                <p className="font-bold text-slate-900">
+                  {u.full_name} ({u.username})
+                </p>
+                <span className="text-[10px] uppercase font-semibold text-slate-500">
+                  {u.role.replace('_', ' ')}
+                </span>
               </div>
-              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">Active</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                Active
+              </span>
             </div>
           ))}
         </div>
