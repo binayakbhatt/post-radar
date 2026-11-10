@@ -1,4 +1,4 @@
-// src/App.jsx
+// src/App.jsx — Official Postal Executive Theme (High-Contrast White Header, Visible Logo, Expanded Map)
 import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './lib/api.js';
@@ -13,9 +13,9 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // GPS Coordinates & Accuracy State
-  const [coords, setCoords] = useState({ lat: 27.47528, lng: 94.90274 });
+  const [coords, setCoords] = useState(null);
   const [accuracy, setAccuracy] = useState(null);
+  const [gpsStatus, setGpsStatus] = useState('Detecting live GPS...');
   const [showHeaderMap, setShowHeaderMap] = useState(true);
   const [syncFlag, setSyncFlag] = useState(1);
   const [activeTab, setActiveTab] = useState('radar');
@@ -28,32 +28,46 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('School');
-  const [customNewType, setCustomNewType] = useState(''); // <-- FIXED: Moved inside App component
+  const [customNewType, setCustomNewType] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newAddress, setNewAddress] = useState('');
 
   const captureLocation = () => {
+    setGpsStatus('Acquiring GPS lock...');
     if (!('geolocation' in navigator)) {
-      setCoords({ lat: 27.47528, lng: 94.90274 });
-      setAccuracy(50);
-      setSyncFlag((prev) => prev + 1);
+      setGpsStatus('GPS not supported by browser');
       return;
     }
+
+    // Stage 1: Fast coarse/cached lock (<300ms) so leads load immediately
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = Number(pos.coords.latitude.toFixed(5));
         const lng = Number(pos.coords.longitude.toFixed(5));
-        const acc = Math.round(pos.coords.accuracy || 25);
+        const acc = Math.round(pos.coords.accuracy || 60);
+        setCoords((prev) => prev || { lat, lng });
+        setAccuracy((prev) => prev || acc);
+        setGpsStatus('');
+      },
+      () => {},
+      { enableHighAccuracy: false, timeout: 3000, maximumAge: 120000 }
+    );
+
+    // Stage 2: High-accuracy satellite lock in parallel
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(5));
+        const lng = Number(pos.coords.longitude.toFixed(5));
+        const acc = Math.round(pos.coords.accuracy || 20);
         setCoords({ lat, lng });
         setAccuracy(acc);
+        setGpsStatus('');
         setSyncFlag((prev) => prev + 1);
       },
       () => {
-        setCoords({ lat: 27.47528, lng: 94.90274 });
-        setAccuracy(120);
-        setSyncFlag((prev) => prev + 1);
+        setGpsStatus((prev) => (coords ? '' : 'Please enable device Location / GPS and tap Refresh'));
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
     );
   };
 
@@ -103,8 +117,10 @@ export default function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen w-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
-        <img src="post-radar-mark.svg" className="w-10 h-10 animate-pulse mr-3" alt="Logo" />
+      <div className="min-h-screen w-full bg-slate-50 text-slate-900 flex items-center justify-center font-bold text-sm">
+        <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-sm p-2 mr-3 flex items-center justify-center">
+          <img src="post-radar-mark.svg" className="w-full h-full object-contain animate-pulse" alt="Logo" />
+        </div>
         Loading Post Radar...
       </div>
     );
@@ -112,10 +128,12 @@ export default function App() {
 
   if (!user) {
     return (
-      <main className="min-h-screen w-full bg-gradient-to-br from-[#B91C1C] via-red-900 to-slate-950 text-white p-6 flex items-center justify-center">
-        <div className="w-full max-w-md bg-white text-slate-900 rounded-3xl p-8 shadow-2xl space-y-5 border border-white/20">
+      <main className="min-h-screen w-full bg-slate-100 text-slate-900 p-6 flex items-center justify-center border-t-8 border-[#B91C1C]">
+        <div className="w-full max-w-md bg-white text-slate-900 rounded-3xl p-8 shadow-xl space-y-5 border border-slate-200">
           <div className="text-center flex flex-col items-center">
-            <img src="post-radar-mark.svg" className="w-16 h-16 mb-2.5" alt="Post Radar Logo" />
+            <div className="w-20 h-20 rounded-2xl bg-amber-50 border-2 border-amber-300 p-2.5 mb-3 shadow-sm flex items-center justify-center">
+              <img src="post-radar-mark.svg" className="w-full h-full object-contain" alt="Post Radar Logo" />
+            </div>
             <span className="px-3.5 py-1 rounded-full bg-amber-400 text-red-950 font-black text-[10px] uppercase tracking-wider shadow-xs">
               Department of Posts • India Post
             </span>
@@ -163,27 +181,46 @@ export default function App() {
 
   return (
     <div className="min-h-screen w-full bg-slate-100 flex flex-col pb-16">
-      {/* Full-Width Top Header */}
-      <header className="bg-[#B91C1C] text-white shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4 pb-3 space-y-3">
+      {/* Official Postal Executive Light Header — High Contrast for Logo Visibility */}
+      <header className="bg-white text-slate-900 shadow-sm border-t-4 border-[#B91C1C] border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 space-y-3.5">
+          {/* Top Bar: Logo, Title, Desktop Nav, Logout */}
           <div className="flex flex-wrap justify-between items-center gap-3">
-            <div className="flex items-center space-x-3">
-              <img src="post-radar-mark.svg" className="w-10 h-10 bg-white/10 rounded-full p-1" alt="Logo" />
+            <div className="flex items-center space-x-3.5">
+              {/* High-Contrast Logo Container */}
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 border-2 border-amber-300 p-1.5 shadow-xs flex items-center justify-center shrink-0">
+                <img
+                  src="post-radar-mark.svg"
+                  className="w-full h-full object-contain"
+                  alt="Post Radar Logo"
+                />
+              </div>
               <div>
-                <h1 className="text-lg font-black tracking-tight leading-tight">Post Radar</h1>
-                <p className="text-xs text-red-100">
-                  {user.full_name} ({user.role.replace('_', ' ')})
+                <div className="flex items-center gap-2">
+                  <h1 className="text-xl font-black tracking-tight text-[#B91C1C] leading-none">
+                    Post Radar
+                  </h1>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-400 text-red-950 font-black text-[10px] uppercase tracking-wide">
+                    India Post
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 font-semibold mt-1">
+                  {user.full_name}{' '}
+                  <span className="text-slate-400 font-normal">
+                    ({user.role.replace('_', ' ')})
+                  </span>
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Desktop Navigation Pills */}
-              <nav className="hidden md:flex bg-red-900/60 p-1 rounded-xl border border-red-400/20 text-xs font-bold">
+              <nav className="hidden md:flex bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
                 <button
                   onClick={() => setActiveTab('radar')}
                   className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
-                    activeTab === 'radar' ? 'bg-amber-400 text-red-950 shadow-xs' : 'text-red-100 hover:text-white'
+                    activeTab === 'radar'
+                      ? 'bg-[#B91C1C] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   Radar Leads
@@ -191,7 +228,9 @@ export default function App() {
                 <button
                   onClick={() => setActiveTab('diary')}
                   className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
-                    activeTab === 'diary' ? 'bg-amber-400 text-red-950 shadow-xs' : 'text-red-100 hover:text-white'
+                    activeTab === 'diary'
+                      ? 'bg-[#B91C1C] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   My Diary
@@ -200,7 +239,9 @@ export default function App() {
                   <button
                     onClick={() => setActiveTab('admin')}
                     className={`px-4 py-2 rounded-lg transition-all cursor-pointer ${
-                      activeTab === 'admin' ? 'bg-amber-400 text-red-950 shadow-xs' : 'text-red-100 hover:text-white'
+                      activeTab === 'admin'
+                        ? 'bg-[#B91C1C] text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
                     Admin Panel
@@ -210,59 +251,67 @@ export default function App() {
 
               <button
                 onClick={handleLogout}
-                className="min-h-[38px] px-3.5 rounded-xl bg-red-900 hover:bg-red-950 text-white font-bold text-xs shadow-xs cursor-pointer"
+                className="min-h-[38px] px-3.5 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-700 hover:text-[#B91C1C] border border-slate-200 font-bold text-xs cursor-pointer transition-all"
               >
                 Logout
               </button>
             </div>
           </div>
 
-          {/* Live GPS Location & Embedded Leaflet Map Card */}
-          <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 text-xs space-y-2.5 shadow-lg">
+          {/* Clean GPS Bar & Expanded Map Card */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs space-y-3 shadow-inner">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center space-x-2">
-                <span className="text-cyan-400 text-sm">⊕</span>
-                <span className="font-bold text-white tracking-wide">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 font-bold text-slate-800">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#B91C1C] animate-ping" />
                   GPS Location
                 </span>
-                <span className="hidden sm:inline-block font-mono text-slate-400 pl-1">
-                  ({coords.lat.toFixed(5)}, {coords.lng.toFixed(5)})
+                <span className="font-mono text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 font-semibold">
+                  {coords ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}` : gpsStatus}
                 </span>
+                {coords && (
+                  <span
+                    className={`font-bold px-2.5 py-1 rounded-lg border ${
+                      isHighAcc
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-amber-50 text-amber-800 border-amber-200'
+                    }`}
+                  >
+                    ● Accuracy: {isHighAcc ? 'High' : 'Low'} (~{accuracy || 95}m)
+                  </span>
+                )}
               </div>
-              <div className="flex items-center space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowHeaderMap(!showHeaderMap)}
-                  className="text-[11px] text-slate-300 hover:text-white underline cursor-pointer"
-                >
-                  {showHeaderMap ? 'Hide Map' : 'Show Map'}
-                </button>
+
+              <div className="flex items-center space-x-2 ml-auto">
+                {coords && (
+                  <button
+                    type="button"
+                    onClick={() => setShowHeaderMap(!showHeaderMap)}
+                    className="px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 font-semibold text-xs cursor-pointer"
+                  >
+                    {showHeaderMap ? 'Hide Map' : 'Show Map'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={captureLocation}
-                  className="text-cyan-400 hover:text-cyan-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-xs flex items-center gap-1 cursor-pointer shadow-xs"
                 >
-                  ↻ Refresh
+                  ↻ Refresh GPS
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="sm:hidden font-mono text-slate-300">
-                {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
-              </span>
-              <span className={`font-semibold ${isHighAcc ? 'text-emerald-400' : 'text-rose-400'}`}>
-                ● Accuracy: {isHighAcc ? 'High' : 'Low'} (~{accuracy || 95}m)
-              </span>
-            </div>
-
-            {showHeaderMap && (
-              <InlineLeafletMap
-                lat={coords.lat}
-                lng={coords.lng}
-                title="Your Current GPS Position"
-                heightClass="h-28 md:h-36"
-              />
+            {/* EXPANDED MAP VIEW: Tall and clear (h-64 on mobile, h-72 on desktop) */}
+            {coords && showHeaderMap && (
+              <div className="rounded-xl overflow-hidden border border-slate-300 shadow-xs">
+                <InlineLeafletMap
+                  lat={coords.lat}
+                  lng={coords.lng}
+                  title="Your Current GPS Position"
+                  heightClass="h-64 md:h-72"
+                />
+              </div>
             )}
           </div>
         </div>
@@ -272,11 +321,11 @@ export default function App() {
       <nav
         className={`md:hidden grid ${
           canAccessAdmin ? 'grid-cols-3' : 'grid-cols-2'
-        } bg-white border-b border-slate-200 p-1 text-center text-xs font-bold text-slate-700 sticky top-0 z-20`}
+        } bg-white border-b border-slate-200 p-1.5 text-center text-xs font-bold text-slate-700 sticky top-0 z-20 shadow-xs`}
       >
         <button
           onClick={() => setActiveTab('radar')}
-          className={`py-2.5 rounded-lg transition-all ${
+          className={`py-2.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'radar' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'
           }`}
         >
@@ -284,7 +333,7 @@ export default function App() {
         </button>
         <button
           onClick={() => setActiveTab('diary')}
-          className={`py-2.5 rounded-lg transition-all ${
+          className={`py-2.5 rounded-xl transition-all cursor-pointer ${
             activeTab === 'diary' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'
           }`}
         >
@@ -293,7 +342,7 @@ export default function App() {
         {canAccessAdmin && (
           <button
             onClick={() => setActiveTab('admin')}
-            className={`py-2.5 rounded-lg transition-all ${
+            className={`py-2.5 rounded-xl transition-all cursor-pointer ${
               activeTab === 'admin' ? 'bg-[#B91C1C] text-white shadow-sm' : 'hover:bg-slate-50'
             }`}
           >
@@ -316,12 +365,16 @@ export default function App() {
         {activeTab === 'admin' && canAccessAdmin && <AdminView user={user} />}
       </main>
 
-      {/* Centered Modal on Desktop, Bottom Sheet on Mobile */}
+      {/* Add New Location Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/70 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              if (!coords?.lat || !coords?.lng) {
+                alert('Waiting for GPS coordinates. Please tap Refresh GPS first.');
+                return;
+              }
               const finalCategory =
                 newType === '__OTHER__' ? customNewType.trim() : newType.trim();
               if (!finalCategory) {
@@ -336,8 +389,8 @@ export default function App() {
                     business_type: finalCategory,
                     phone: newPhone,
                     address: newAddress,
-                    lat: coords?.lat || 27.47528,
-                    lng: coords?.lng || 94.90274,
+                    lat: coords.lat,
+                    lng: coords.lng,
                   }),
                 });
                 setShowAddModal(false);
