@@ -24,7 +24,7 @@ export default function RadarView({ coords, syncFlag, onOpenAddModal, user }) {
 
   // Dynamically include all categories present in nearby leads + core categories
   const categories = React.useMemo(() => {
-    const core = ['ALL', 'School', 'Hospital', 'Bank', 'Police Station', 'Retail', 'Factory'];
+    const core = ['ALL', 'School', 'Hospital', 'Bank', 'Police Station', 'Government Office', 'Transport Hub', 'Retail', 'Factory'];
     const dynamicSet = new Set(core);
     businessesList.forEach((b) => {
       if (b.business_type) dynamicSet.add(b.business_type);
