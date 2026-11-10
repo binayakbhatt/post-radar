@@ -1,47 +1,200 @@
-// src/components/AdminView.jsx
-import React, { useState, useRef, useMemo } from 'react';
+// src/components/AdminView.jsx — Complete Admin Command Center with One-Click Database Export
+import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../lib/api.js';
 import { EXHAUSTIVE_CATEGORIES } from '../lib/categories.js';
 
+// Helper to safely convert an array of objects into an Excel-compatible CSV file download
+function downloadCSV(filename, headers, rows) {
+  const escapeCSV = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const csvContent = [
+    headers.map((h) => escapeCSV(h.label)).join(','),
+    ...rows.map((row) => headers.map((h) => escapeCSV(row[h.key])).join(','))
+  ].join('\r\n');
+
+  // Add UTF-8 BOM (\uFEFF) so Microsoft Excel opens symbols & regional text cleanly
+  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function formatUnixTimestamp(ts) {
+  if (!ts) return '';
+  try {
+    return new Date(Number(ts) * 1000).toLocaleString('en-IN');
+  } catch {
+    return '';
+  }
+}
+
 export default function AdminView({ user }) {
   const queryClient = useQueryClient();
-  const pitchFormRef = useRef(null);
-  const productInputRef = useRef(null);
+  const [exportLoading, setExportLoading] = useState(false);
 
   // User Creation State
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [divisionName, setDivisionName] = useState('');
-  const [placeOfPosting, setPlaceOfPosting] = useState('');
-  const [role, setRole] = useState('executive');
+  const [newUsername, setNewUsername] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newFullName, setNewFullName] = useState('');
+  const [newDivision, setNewDivision] = useState('Dibrugarh Postal Division');
+  const [newPosting, setNewPosting] = useState('Dhemaji Sub Division');
+  const [newRole, setNewRole] = useState('executive');
 
-  // Pitch & Product Config State
-  const [bizType, setBizType] = useState('School');
-  const [customBizType, setCustomBizType] = useState('');
-  const [recommendedProduct, setRecommendedProduct] = useState('');
-  const [pitchScript, setPitchScript] = useState('');
-  const [editingConfigId, setEditingConfigId] = useState(null);
+  // Pitch Config State
+  const [cfgType, setCfgType] = useState('School');
+  const [cfgProduct, setCfgProduct] = useState('');
+  const [cfgPitch, setCfgPitch] = useState('');
 
+  // Fetch Users
   const { data: usersData = { users: [] } } = useQuery({
     queryKey: ['admin_users'],
-    queryFn: () => apiFetch('/api/admin/users'),
+    queryFn: () => apiFetch('/api/admin/users')
   });
 
+  // Fetch Pitches
   const { data: configsData = { configs: [] } } = useQuery({
-    queryKey: ['admin_configs_manage'],
-    queryFn: () => apiFetch('/api/admin/configs'),
+    queryKey: ['admin_configs'],
+    queryFn: () => apiFetch('/api/admin/configs')
   });
 
-  // Merge standard exhaustive list with any custom categories already saved in DB
-  const allCategories = useMemo(() => {
-    const set = new Set(EXHAUSTIVE_CATEGORIES);
-    (configsData?.configs || []).forEach((c) => {
-      if (c.business_type) set.add(c.business_type.trim());
-    });
-    return Array.from(set);
-  }, [configsData]);
+  // Fetch Live Database Summary & Export Data
+  const { data: exportData, refetch: refetchExport } = useQuery({
+    queryKey: ['admin_export_summary'],
+    queryFn: () => apiFetch('/api/admin/export')
+  });
+
+  const stats = exportData?.stats || {
+    total_businesses: 0,
+    me_added_businesses: 0,
+    total_visited: 0,
+    total_diary: 0,
+    total_users: usersData.users?.length || 0
+  };
+
+  // Handler to fetch fresh DB snapshot and trigger selected download format
+  const handleDownloadData = async (type) => {
+    setExportLoading(true);
+    try {
+      const fresh = await apiFetch('/api/admin/export');
+      const dateStamp = new Date().toISOString().slice(0, 10);
+
+      if (type === 'businesses_csv') {
+        const rows = (fresh.businesses || []).map((b) => ({
+          ...b,
+          source_type: b.created_by || String(b.id).startsWith('biz_me_') ? 'Staff Added (ME)' : 'OpenStreetMap Auto',
+          added_by_name: b.added_by_name || 'System / OSM',
+          is_visited_label: b.is_visited === 1 ? 'YES' : 'NO',
+          added_to_diary_label: b.added_to_diary === 1 ? 'YES' : 'NO',
+          updated_date: formatUnixTimestamp(b.updated_at),
+          visited_date: formatUnixTimestamp(b.visited_at)
+        }));
+
+        downloadCSV(
+          `PostRadar_All_Institutions_${dateStamp}.csv`,
+          [
+            { key: 'id', label: 'Record ID' },
+            { key: 'name', label: 'Institution / Business Name' },
+            { key: 'business_type', label: 'Category' },
+            { key: 'source_type', label: 'Source' },
+            { key: 'phone', label: 'Phone' },
+            { key: 'address', label: 'Address / Area' },
+            { key: 'pincode', label: 'Pincode' },
+            { key: 'lat', label: 'Latitude' },
+            { key: 'lng', label: 'Longitude' },
+            { key: 'added_by_name', label: 'Added By Staff' },
+            { key: 'added_by_posting', label: 'Added By Posting' },
+            { key: 'is_visited_label', label: 'Visited?' },
+            { key: 'visited_by_name', label: 'Visited By Officer' },
+            { key: 'visited_by_posting', label: 'Visited By Posting' },
+            { key: 'visit_remark', label: 'Visit Remark' },
+            { key: 'next_follow_up_date', label: 'Next Follow-Up Date' },
+            { key: 'added_to_diary_label', label: 'In Diary?' },
+            { key: 'diary_details', label: 'Diary Notes' },
+            { key: 'visited_date', label: 'Last Visit Timestamp' },
+            { key: 'updated_date', label: 'Record Updated At' }
+          ],
+          rows
+        );
+      } else if (type === 'visits_csv') {
+        const rows = (fresh.visits || []).map((v) => ({
+          ...v,
+          is_visited_label: v.is_visited === 1 ? 'Visited' : 'Pending',
+          in_diary_label: v.added_to_diary === 1 ? 'Yes' : 'No',
+          visited_date: formatUnixTimestamp(v.visited_at)
+        }));
+
+        downloadCSV(
+          `PostRadar_Visits_And_Diary_${dateStamp}.csv`,
+          [
+            { key: 'visited_date', label: 'Date & Time' },
+            { key: 'executive_name', label: 'Officer Name' },
+            { key: 'place_of_posting', label: 'Place of Posting' },
+            { key: 'division_name', label: 'Division' },
+            { key: 'business_name', label: 'Institution Name' },
+            { key: 'business_type', label: 'Category' },
+            { key: 'phone', label: 'Phone' },
+            { key: 'address', label: 'Address' },
+            { key: 'is_visited_label', label: 'Visit Status' },
+            { key: 'visit_remark', label: 'Visit Remarks / Outcome' },
+            { key: 'next_follow_up_date', label: 'Next Follow-Up Date' },
+            { key: 'in_diary_label', label: 'Saved in Diary?' },
+            { key: 'diary_details', label: 'Diary Lead Details' },
+            { key: 'lat', label: 'Latitude' },
+            { key: 'lng', label: 'Longitude' }
+          ],
+          rows
+        );
+      } else if (type === 'users_csv') {
+        const rows = (fresh.users || []).map((u) => ({
+          ...u,
+          status_label: u.is_active === 1 ? 'Active' : 'Inactive',
+          created_date: formatUnixTimestamp(u.created_at)
+        }));
+
+        downloadCSV(
+          `PostRadar_Staff_Roster_${dateStamp}.csv`,
+          [
+            { key: 'id', label: 'User ID' },
+            { key: 'username', label: 'Username' },
+            { key: 'full_name', label: 'Full Name' },
+            { key: 'role', label: 'Role' },
+            { key: 'place_of_posting', label: 'Place of Posting' },
+            { key: 'division_name', label: 'Division' },
+            { key: 'status_label', label: 'Status' },
+            { key: 'created_date', label: 'Created On' }
+          ],
+          rows
+        );
+      } else if (type === 'full_json') {
+        const blob = new Blob([JSON.stringify(fresh, null, 2)], {
+          type: 'application/json'
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `PostRadar_Full_DB_Backup_${dateStamp}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+      refetchExport();
+    } catch (err) {
+      alert('Export failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setExportLoading(false);
+    }
+  };
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
@@ -49,396 +202,336 @@ export default function AdminView({ user }) {
       await apiFetch('/api/admin/users', {
         method: 'POST',
         body: JSON.stringify({
-          username,
-          password,
-          full_name: fullName,
-          division_name: divisionName,
-          place_of_posting: placeOfPosting,
-          role,
-        }),
+          username: newUsername,
+          password: newPassword,
+          full_name: newFullName,
+          division_name: newDivision,
+          place_of_posting: newPosting,
+          role: newRole
+        })
       });
-      setUsername('');
-      setPassword('');
-      setFullName('');
-      setDivisionName('');
-      setPlaceOfPosting('');
+      setNewUsername('');
+      setNewPassword('');
+      setNewFullName('');
       queryClient.invalidateQueries({ queryKey: ['admin_users'] });
-      alert('User created successfully!');
+      refetchExport();
+      alert('Staff account created!');
     } catch (err) {
       alert(err.message || 'Failed to create user');
     }
   };
 
-  const handleDeleteUser = async (targetUser) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to delete user "${targetUser.full_name}" (@${targetUser.username})?`
-      )
-    ) {
-      return;
-    }
+  const handleDeleteUser = async (id, name) => {
+    if (!window.confirm(`Delete user "${name}" permanently?`)) return;
     try {
-      await apiFetch(`/api/admin/users?id=${encodeURIComponent(targetUser.id)}`, {
-        method: 'DELETE',
+      await apiFetch(`/api/admin/users?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE'
       });
       queryClient.invalidateQueries({ queryKey: ['admin_users'] });
+      refetchExport();
     } catch (err) {
       alert(err.message || 'Failed to delete user');
     }
   };
 
-  const handleSaveConfig = async (e) => {
+  const handleSavePitch = async (e) => {
     e.preventDefault();
-    const finalBizType = bizType === '__OTHER__' ? customBizType.trim() : bizType.trim();
-    if (!finalBizType) {
-      alert('Please enter a custom business/institution type.');
-      return;
-    }
-
     try {
       await apiFetch('/api/admin/configs', {
         method: 'POST',
         body: JSON.stringify({
-          business_type: finalBizType,
-          recommended_product: recommendedProduct,
-          pitch_script: pitchScript,
-        }),
+          business_type: cfgType,
+          recommended_product: cfgProduct,
+          pitch_script: cfgPitch
+        })
       });
-      setEditingConfigId(null);
-      setBizType(finalBizType);
-      setCustomBizType('');
-      queryClient.invalidateQueries({ queryKey: ['configs'] });
-      queryClient.invalidateQueries({ queryKey: ['admin_configs_manage'] });
-      alert(`Pitch & Product configuration for "${finalBizType}" updated successfully!`);
+      setCfgProduct('');
+      setCfgPitch('');
+      queryClient.invalidateQueries({ queryKey: ['admin_configs'] });
+      alert('Pitch configuration updated!');
     } catch (err) {
-      alert(err.message || 'Failed to update configuration');
+      alert(err.message || 'Failed to save config');
     }
-  };
-
-  const handleSelectConfigToEdit = (config) => {
-    const matchedType =
-      allCategories.find(
-        (t) => t.toLowerCase() === (config.business_type || '').trim().toLowerCase()
-      ) || config.business_type;
-
-    setEditingConfigId(config.id);
-    setBizType(matchedType);
-    setCustomBizType('');
-    setRecommendedProduct(config.recommended_product || '');
-    setPitchScript(config.pitch_script || '');
-
-    if (pitchFormRef.current) {
-      pitchFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-    setTimeout(() => {
-      productInputRef.current?.focus();
-    }, 300);
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 pb-10 items-start">
-      {/* LEFT COLUMN: PITCH & PRODUCT CONFIGURATOR */}
-      <div className="space-y-4">
-        <form
-          ref={pitchFormRef}
-          onSubmit={handleSaveConfig}
-          className={`bg-white p-4 rounded-2xl border transition-all space-y-3 shadow-xs ${
-            editingConfigId ? 'border-[#B91C1C] ring-2 ring-red-100' : 'border-slate-200'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold uppercase text-[#B91C1C]">
-              {editingConfigId
-                ? `Editing Pitch: ${bizType === '__OTHER__' ? customBizType : bizType}`
-                : 'Configure Pitch & Products by Category'}
-            </h3>
-            {editingConfigId && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingConfigId(null);
-                  setRecommendedProduct('');
-                  setPitchScript('');
-                }}
-                className="text-[11px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-
+    <div className="space-y-6">
+      {/* 1. DIVISIONAL KPI OVERVIEW & DATA EXPORT CENTER */}
+      <section className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              Institution / Business Type
-            </label>
-            <select
-              value={bizType}
-              onChange={(e) => {
-                const selectedType = e.target.value;
-                setBizType(selectedType);
-                if (selectedType === '__OTHER__') {
-                  setEditingConfigId(null);
-                  setCustomBizType('');
-                  setRecommendedProduct('');
-                  setPitchScript('');
-                  return;
-                }
-                const existing = (configsData?.configs || []).find(
-                  (c) => c.business_type.toLowerCase() === selectedType.toLowerCase()
-                );
-                if (existing) {
-                  setEditingConfigId(existing.id);
-                  setRecommendedProduct(existing.recommended_product);
-                  setPitchScript(existing.pitch_script);
-                } else {
-                  setEditingConfigId(null);
-                  setRecommendedProduct('');
-                  setPitchScript('');
-                }
-              }}
-              className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm bg-white"
-            >
-              {allCategories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-              <option value="__OTHER__" className="font-bold text-[#B91C1C]">
-                + Other (Add Custom Category...)
-              </option>
-            </select>
+            <span className="px-2.5 py-1 rounded-full bg-red-50 text-[#B91C1C] font-black text-[10px] uppercase tracking-wider border border-red-200">
+              Divisional Oversight & Backup
+            </span>
+            <h2 className="text-lg font-black text-slate-900 mt-1">
+              Database Export & Field Intelligence Summary
+            </h2>
+            <p className="text-xs text-slate-500">
+              Download all institutions, field visits, diary follow-ups, and staff records in Excel-ready CSV or JSON format.
+            </p>
           </div>
-
-          {bizType === '__OTHER__' && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
-              <label className="block text-[11px] font-bold text-amber-950">
-                Enter New Custom Category Name
-              </label>
-              <input
-                required
-                placeholder="e.g., Bamboo Processing Unit, Army Cantonment, Cold Storage..."
-                value={customBizType}
-                onChange={(e) => setCustomBizType(e.target.value)}
-                className="w-full min-h-[40px] px-3 rounded-xl border border-amber-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#B91C1C]"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              Recommended Product / Service
-            </label>
-            <input
-              ref={productInputRef}
-              required
-              placeholder="e.g., India Post Corporate Speed Post & Bulk Parcel"
-              value={recommendedProduct}
-              onChange={(e) => setRecommendedProduct(e.target.value)}
-              className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#B91C1C]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
-              Pitch Script & Talking Points
-            </label>
-            <textarea
-              required
-              rows={3}
-              placeholder="Enter standard pitch script for field executives..."
-              value={pitchScript}
-              onChange={(e) => setPitchScript(e.target.value)}
-              className="w-full p-2.5 text-xs rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#B91C1C]"
-            />
-          </div>
-
           <button
-            type="submit"
-            className="w-full min-h-[44px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-xs shadow-sm cursor-pointer transition-all"
+            type="button"
+            onClick={() => refetchExport()}
+            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
           >
-            Save / Update Category Pitch ✓
+            ↻ Refresh Counts
           </button>
-        </form>
+        </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2.5 shadow-xs">
-          <h3 className="text-xs font-bold uppercase text-slate-700">
-            Active Category Pitches ({(configsData?.configs || []).length})
-          </h3>
-          <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
-            {(configsData?.configs || []).map((cfg) => {
-              const isSelected = editingConfigId === cfg.id;
-              return (
-                <div
-                  key={cfg.id}
-                  onClick={() => handleSelectConfigToEdit(cfg)}
-                  className={`p-3 rounded-xl border text-xs space-y-1.5 cursor-pointer transition-all ${
-                    isSelected
-                      ? 'bg-red-50/80 border-[#B91C1C] ring-1 ring-[#B91C1C]'
-                      : 'bg-slate-50 border-slate-200 hover:bg-red-50/40 hover:border-red-300'
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-[#B91C1C] uppercase">{cfg.business_type}</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSelectConfigToEdit(cfg);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-500 text-red-950 font-bold text-[11px] shadow-2xs cursor-pointer transition-all"
-                    >
-                      ✏️ Edit Pitch
-                    </button>
-                  </div>
-                  <p className="font-bold text-slate-900">📦 {cfg.recommended_product}</p>
-                  <p className="text-slate-600 italic line-clamp-2">“{cfg.pitch_script}”</p>
-                </div>
-              );
-            })}
+        {/* Live Database KPI Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+            <p className="text-[11px] font-bold text-slate-500 uppercase">Total Institutions</p>
+            <p className="text-2xl font-black text-slate-900 mt-0.5">{stats.total_businesses}</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200">
+            <p className="text-[11px] font-bold text-amber-900 uppercase">Staff Added (ME)</p>
+            <p className="text-2xl font-black text-amber-800 mt-0.5">{stats.me_added_businesses}</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200">
+            <p className="text-[11px] font-bold text-emerald-900 uppercase">Visited Leads</p>
+            <p className="text-2xl font-black text-emerald-700 mt-0.5">{stats.total_visited}</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200">
+            <p className="text-[11px] font-bold text-blue-900 uppercase">Diary Follow-Ups</p>
+            <p className="text-2xl font-black text-blue-700 mt-0.5">{stats.total_diary}</p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200 col-span-2 sm:col-span-1">
+            <p className="text-[11px] font-bold text-purple-900 uppercase">Active Staff</p>
+            <p className="text-2xl font-black text-purple-800 mt-0.5">{stats.total_users}</p>
           </div>
         </div>
-      </div>
 
-      {/* RIGHT COLUMN: USER CREATION & ACTIVE ROSTER */}
-      <div className="space-y-4">
-        <form
-          onSubmit={handleCreateUser}
-          className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3 shadow-xs"
-        >
-          <h3 className="text-xs font-bold uppercase text-[#B91C1C]">Create User ID & Password</h3>
+        {/* One-Click Download Buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+          <button
+            type="button"
+            disabled={exportLoading}
+            onClick={() => handleDownloadData('businesses_csv')}
+            className="flex flex-col items-start justify-between p-4 rounded-2xl bg-[#B91C1C] hover:bg-red-800 text-white text-left shadow-sm transition-all cursor-pointer disabled:opacity-50"
+          >
+            <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md">
+              Master Excel CSV
+            </span>
+            <span className="font-bold text-sm mt-2">
+              📥 Download All Institutions & Visits
+            </span>
+            <span className="text-[11px] text-red-100 mt-1">
+              Includes GPS, category, added-by & visit status
+            </span>
+          </button>
 
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">Full Name</label>
-            <input
-              required
-              placeholder="e.g., Priyam Baruah"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm"
-            />
-          </div>
+          <button
+            type="button"
+            disabled={exportLoading}
+            onClick={() => handleDownloadData('visits_csv')}
+            className="flex flex-col items-start justify-between p-4 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-left shadow-sm transition-all cursor-pointer disabled:opacity-50"
+          >
+            <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md">
+              Field Report CSV
+            </span>
+            <span className="font-bold text-sm mt-2">
+              📥 Download Visits & Diary Log
+            </span>
+            <span className="text-[11px] text-emerald-100 mt-1">
+              Officer-wise remarks & follow-up dates
+            </span>
+          </button>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Division Name
-              </label>
+          <button
+            type="button"
+            disabled={exportLoading}
+            onClick={() => handleDownloadData('users_csv')}
+            className="flex flex-col items-start justify-between p-4 rounded-2xl bg-slate-800 hover:bg-slate-900 text-white text-left shadow-sm transition-all cursor-pointer disabled:opacity-50"
+          >
+            <span className="text-xs font-black uppercase tracking-wider bg-white/20 px-2 py-0.5 rounded-md">
+              Staff Roster CSV
+            </span>
+            <span className="font-bold text-sm mt-2">
+              📥 Download Staff Accounts
+            </span>
+            <span className="text-[11px] text-slate-300 mt-1">
+              All executives, postings & divisions
+            </span>
+          </button>
+
+          <button
+            type="button"
+            disabled={exportLoading}
+            onClick={() => handleDownloadData('full_json')}
+            className="flex flex-col items-start justify-between p-4 rounded-2xl bg-amber-50 hover:bg-amber-100 text-slate-900 border-2 border-amber-300 text-left shadow-xs transition-all cursor-pointer disabled:opacity-50"
+          >
+            <span className="text-xs font-black uppercase tracking-wider bg-amber-300/70 text-red-950 px-2 py-0.5 rounded-md">
+              Full D1 Snapshot
+            </span>
+            <span className="font-bold text-sm mt-2">
+              📦 Download Complete JSON Backup
+            </span>
+            <span className="text-[11px] text-slate-600 mt-1">
+              Raw backup of all 4 database tables
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {/* 2. STAFF / USER MANAGEMENT */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
+          <h3 className="font-black text-base text-slate-900">
+            Create Field Executive / Admin Account
+          </h3>
+          <form onSubmit={handleCreateUser} className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 required
-                placeholder="e.g., Dibrugarh Division"
-                value={divisionName}
-                onChange={(e) => setDivisionName(e.target.value)}
-                className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm"
+                placeholder="Username (e.g., me_silapathar)"
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                className="w-full min-h-[42px] px-3.5 rounded-xl border border-slate-300 text-xs"
               />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Place of Posting
-              </label>
-              <input
-                required
-                placeholder="e.g., Dhemaji Sub Division"
-                value={placeOfPosting}
-                onChange={(e) => setPlaceOfPosting(e.target.value)}
-                className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Username</label>
-              <input
-                required
-                placeholder="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Password</label>
               <input
                 required
                 type="password"
                 placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full min-h-[42px] px-3.5 rounded-xl border border-slate-300 text-xs"
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">Access Role</label>
+            <input
+              required
+              placeholder="Officer Full Name"
+              value={newFullName}
+              onChange={(e) => setNewFullName(e.target.value)}
+              className="w-full min-h-[42px] px-3.5 rounded-xl border border-slate-300 text-xs"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                placeholder="Division (e.g., Dibrugarh Division)"
+                value={newDivision}
+                onChange={(e) => setNewDivision(e.target.value)}
+                className="w-full min-h-[42px] px-3.5 rounded-xl border border-slate-300 text-xs"
+              />
+              <input
+                placeholder="Sub-Division / Office of Posting"
+                value={newPosting}
+                onChange={(e) => setNewPosting(e.target.value)}
+                className="w-full min-h-[42px] px-3.5 rounded-xl border border-slate-300 text-xs"
+              />
+            </div>
             <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="w-full min-h-[42px] px-3 rounded-xl border border-slate-300 text-sm bg-white"
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value)}
+              className="w-full min-h-[42px] px-3.5 rounded-xl border border-slate-300 text-xs bg-white font-semibold"
             >
-              <option value="executive">Marketing Executive</option>
-              <option value="admin">Divisional Admin</option>
-              {user.role === 'super_admin' && <option value="super_admin">Super Admin</option>}
+              <option value="executive">Marketing Executive / Field Staff</option>
+              <option value="admin">Divisional / Sub-Divisional Admin</option>
+              {user.role === 'super_admin' && (
+                <option value="super_admin">Super Admin</option>
+              )}
             </select>
-          </div>
+            <button
+              type="submit"
+              className="w-full min-h-[44px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-xs cursor-pointer shadow-xs"
+            >
+              + Create User Account
+            </button>
+          </form>
 
-          <button
-            type="submit"
-            className="w-full min-h-[44px] rounded-xl bg-[#B91C1C] hover:bg-red-800 text-white font-bold text-xs cursor-pointer transition-all"
-          >
-            Create User Credentials
-          </button>
-        </form>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-2.5 shadow-xs">
-          <h3 className="text-xs font-bold uppercase text-slate-700">Active User Roster</h3>
-          <div className="space-y-2">
-            {(usersData?.users || []).map((u) => {
-              const isSelf = u.id === user.id;
-              const isMasterAdmin = u.id === 'usr_super_01';
-              const canDelete =
-                !isSelf &&
-                !isMasterAdmin &&
-                (user.role === 'super_admin' || u.role !== 'super_admin');
-
-              return (
-                <div
-                  key={u.id}
-                  className="flex justify-between items-center p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs gap-2"
-                >
-                  <div className="space-y-0.5">
-                    <p className="font-bold text-slate-900">
-                      {u.full_name}{' '}
-                      <span className="text-slate-500 font-normal">(@{u.username})</span>
-                    </p>
-                    {(u.division_name || u.place_of_posting) && (
-                      <p className="text-[11px] text-slate-600 font-medium">
-                        📍 {[u.place_of_posting, u.division_name].filter(Boolean).join(' • ')}
-                      </p>
-                    )}
-                    <span className="inline-block text-[10px] uppercase font-bold text-[#B91C1C]">
-                      {u.role.replace('_', ' ')}
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2 shrink-0">
-                    <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
-                      Active
-                    </span>
-                    {canDelete && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteUser(u)}
-                        className="min-h-[30px] px-2.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-800 font-bold text-[11px] transition-all cursor-pointer"
-                      >
-                        🗑️ Delete
-                      </button>
-                    )}
-                  </div>
+          <div className="pt-3 border-t border-slate-100 space-y-2 max-h-72 overflow-y-auto">
+            <p className="text-xs font-bold text-slate-500 uppercase">
+              Registered Personnel ({usersData.users?.length || 0})
+            </p>
+            {(usersData.users || []).map((u) => (
+              <div
+                key={u.id}
+                className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs"
+              >
+                <div>
+                  <p className="font-bold text-slate-900">
+                    {u.full_name}{' '}
+                    <span className="text-[#B91C1C] font-mono">(@{u.username})</span>
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {u.place_of_posting || 'No Posting'} • {u.division_name || 'Assam Circle'} •{' '}
+                    <span className="uppercase font-bold text-slate-700">{u.role}</span>
+                  </p>
                 </div>
-              );
-            })}
+                {u.id !== 'usr_super_01' && u.id !== user.id && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteUser(u.id, u.full_name)}
+                    className="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px] cursor-pointer"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
-        </div>
+        </section>
+
+        {/* 3. PITCH SCRIPT CONFIGURATOR */}
+        <section className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
+          <h3 className="font-black text-base text-slate-900">
+            Configure Product Pitch Scripts by Category
+          </h3>
+          <form onSubmit={handleSavePitch} className="space-y-3">
+            <select
+              value={cfgType}
+              onChange={(e) => setCfgType(e.target.value)}
+              className="w-full min-h-[42px] px-3.5 rounded-xl border border-slate-300 text-xs bg-white font-semibold"
+            >
+              {EXHAUSTIVE_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+            <input
+              required
+              placeholder="Recommended Product (e.g., PLI, RPLI, POSB Salary Account, Speed Post BNPL)"
+              value={cfgProduct}
+              onChange={(e) => setCfgProduct(e.target.value)}
+              className="w-full min-h-[42px] px-3.5 rounded-xl border border-slate-300 text-xs"
+            />
+            <textarea
+              required
+              rows={3}
+              placeholder="Enter talking points / pitch script for field officers..."
+              value={cfgPitch}
+              onChange={(e) => setCfgPitch(e.target.value)}
+              className="w-full p-3.5 rounded-xl border border-slate-300 text-xs"
+            />
+            <button
+              type="submit"
+              className="w-full min-h-[44px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs cursor-pointer shadow-xs"
+            >
+              Save Category Pitch Script
+            </button>
+          </form>
+
+          <div className="pt-3 border-t border-slate-100 space-y-2 max-h-72 overflow-y-auto">
+            <p className="text-xs font-bold text-slate-500 uppercase">
+              Active Pitch Scripts ({configsData.configs?.length || 0})
+            </p>
+            {(configsData.configs || []).map((c) => (
+              <div
+                key={c.id}
+                className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-1"
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-black text-slate-900">{c.business_type}</span>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-bold text-[10px]">
+                    {c.recommended_product}
+                  </span>
+                </div>
+                <p className="text-slate-600 text-[11px]">{c.pitch_script}</p>
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
